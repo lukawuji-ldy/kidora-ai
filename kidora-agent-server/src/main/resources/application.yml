@@ -1,0 +1,48 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: kidora-agent-server
+  ai:
+    openai:
+      api-key: ${KIDORA_LLM_API_KEY:sk-placeholder}
+      base-url: https://api.openai.com
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/kidora_ai
+    username: postgres
+    password: 1234567890
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    encoding: UTF-8
+
+kidora:
+  security:
+    api-key-secret: ${KIDORA_API_KEY_SECRET:change-me-kidora-api-key-secret-32bytes!}
+    jwt:
+      secret: ${KIDORA_JWT_SECRET:change-me-kidora-ai-jwt-secret-key-32bytes!}
+      expire-hours: 72
+      issuer: kidora-ai
+  model:
+    primary-config-id: llm_primary
+    api-key-override: ${KIDORA_LLM_API_KEY:}
+    timeout: 60s
+  agent:
+    max-model-calls: 8
+    chat-window-size: 20
+  server:
+    blocking-pool-size: 32
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    org.flywaydb: INFO
+    com.wuji.kidora.ai: INFO

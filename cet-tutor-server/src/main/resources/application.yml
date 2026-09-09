@@ -1,0 +1,41 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: cet-tutor-server
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/kidora_ai
+    username: postgres
+    password: 1234567890
+    driver-class-name: org.postgresql.Driver
+  ai:
+    openai:
+      api-key: ${KIDORA_LLM_API_KEY:sk-placeholder}
+      base-url: https://api.openai.com
+  flyway:
+    enabled: false
+
+kidora:
+  security:
+    api-key-secret: ${KIDORA_API_KEY_SECRET:change-me-kidora-api-key-secret-32bytes!}
+    jwt:
+      secret: ${KIDORA_JWT_SECRET:change-me-kidora-ai-jwt-secret-key-32bytes!}
+      expire-hours: 72
+      issuer: kidora-ai
+  model:
+    primary-config-id: llm_primary
+    api-key-override: ${KIDORA_LLM_API_KEY:}
+    timeout: 60s
+  cet:
+    blocking-pool-size: 16
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.wuji.kidora.ai: INFO
