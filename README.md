@@ -2,7 +2,7 @@
 
 儿童健康与成长方向的 **Agent 平台**运行时仓库。首期产品：**Child English Tutor（CET）** — 儿童英语口语陪练。
 
-> **当前进度：** 阶段 3c 已落地（CET Safety 补洞、通用 Chat SSE、`kidora-web` 文本陪练）。下一阶段：MVP-2 语音 MCP。
+> **当前进度：** MVP-2C 已落地（讯飞默认 / 腾讯备选 / Azure 第三档暂不用 + 管理台主备）。下一阶段：MVP-2B2 Web 录音/播放。
 
 ## 仓库边界
 
@@ -65,6 +65,21 @@ java -jar cet-tutor-server/target/cet-tutor-server-1.0.0-SNAPSHOT.jar
 | `POST :8082/api/cet/sessions/{id}/complete` | 结课评测 |
 | `GET  :8082/api/cet/sessions/{id}/report` | 儿童摘要 |
 
+### MCP 工具服务（stub | azure）
+
+```powershell
+mvn -f kidora-common/pom.xml install -DskipTests
+mvn -f kidora-mcp-server/pom.xml -DskipTests package
+java -jar kidora-mcp-server/target/kidora-mcp-server-1.0.0-SNAPSHOT.jar
+# :8081  — tools: echo_ping / asr_transcribe / tts_synthesize / pronunciation_score
+# 默认 KIDORA_SPEECH_PROVIDER=stub；azure 时设 AZURE_SPEECH_KEY / AZURE_SPEECH_REGION
+# 鉴权：KIDORA_MCP_AUTH_ENABLED / KIDORA_MCP_API_KEY（local 默认关闭）
+```
+
+CET 挂载 Client：`KIDORA_MCP_ENABLED=true`（读 `mcp_server_ref`，空库回落 `http://127.0.0.1:8081`）。
+
+详设：[docs/mcp-design.md](docs/mcp-design.md)。
+
 ### 前台 kidora-web
 
 ```powershell
@@ -93,10 +108,12 @@ CET 核心叙事：**Plan → Practice → Evaluate → Re-plan**（大循环）
 
 ```
 kidora-common / kidora-memory / kidora-agent-core
-kidora-agent-server（Auth + Chat + Flyway V1–V4）
+kidora-agent-server（Auth + Chat + Flyway V1–V6，含 mcp_*）
 cet-tutor-core / cet-tutor-server（CET API + SSE）
+kidora-mcp-server（echo_ping + ASR/TTS/发音 stub|azure，:8081）
+cet-tutor-server（MCP Client 可选；stream 支持 audioBase64 + audio.tts SSE）
 kidora-web（登录 / CET 文本陪练 / 最小 Chat）
-待做：kidora-mcp-server / kidora-rag / 语音闭环
+待做：kidora-web 语音闭环 UI（MVP-2B2）/ kidora-rag
 ```
 
 ## 技术栈（锁定）

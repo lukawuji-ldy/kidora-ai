@@ -2,6 +2,8 @@ package com.wuji.kidora.ai.cet.server.web;
 
 import com.wuji.kidora.ai.agent.DetachedBlockingMono;
 import com.wuji.kidora.ai.cet.core.service.CetLessonService;
+import com.wuji.kidora.ai.cet.core.speech.CetStreamEvent;
+import com.wuji.kidora.ai.cet.core.speech.TurnInput;
 import com.wuji.kidora.ai.common.api.ApiResponse;
 import com.wuji.kidora.ai.common.auth.AuthUser;
 import com.wuji.kidora.ai.common.exception.ErrorCode;
@@ -60,12 +62,11 @@ public class CetSessionController {
                                                 @PathVariable String sessionId,
                                                 @RequestBody StreamTurnRequest request) {
         AuthUser user = requireUser(authentication);
-        return Flux.defer(() -> cetLessonService.streamTurn(user.userId(), sessionId, request.text()))
+        TurnInput input = new TurnInput(request.text(), request.audioBase64(),
+                request.locale(), request.referenceText());
+        return Flux.defer(() -> cetLessonService.streamTurn(user.userId(), sessionId, input))
                 .subscribeOn(cetBlockingScheduler)
-                .map(chunk -> ServerSentEvent.<String>builder()
-                        .event("message.delta")
-                        .data(chunk)
-                        .build())
+                .map(CetSessionController::toSse)
                 .concatWith(Mono.just(ServerSentEvent.<String>builder().event("done").data("[DONE]").build()))
                 .onErrorResume(KidoraException.class, ex -> {
                     String event = ex.getErrorCode() == ErrorCode.CET_SAFETY_BLOCKED ? "safety.block" : "error";
@@ -77,6 +78,15 @@ public class CetSessionController {
                             ServerSentEvent.<String>builder().event("done").data("[DONE]").build()
                     );
                 });
+    }
+
+    static ServerSentEvent<String> toSse(CetStreamEvent event) {
+        String name = switch (event.type()) {
+            case DELTA -> "message.delta";
+            case TTS -> "audio.tts";
+            case PRONUNCIATION -> "pronunciation";
+        };
+        return ServerSentEvent.<String>builder().event(name).data(event.data()).build();
     }
 
     @PostMapping("/sessions/{sessionId}/complete")
@@ -117,6 +127,14 @@ public class CetSessionController {
     public record OpenSessionRequest(String learnerId, String topic, String personaId) {
     }
 
-    public record StreamTurnRequest(String text) {
+    /**
+     * 陪练轮次请求：text 与 audioBase64 二选一。
+     *
+     * @param text          文本
+     * @param audioBase64   音频
+     * @param locale        区域
+     * @param referenceText 发音参考
+     */
+    public record StreamTurnRequest(String text, String audioBase64, String locale, String referenceText) {
     }
 }

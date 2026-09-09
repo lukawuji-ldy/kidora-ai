@@ -19,10 +19,10 @@ CREATE INDEX IF NOT EXISTS idx_prompt_group_code ON prompt_template (prompt_grou
 COMMENT ON TABLE prompt_template IS '提示词线上副本（每 code 一行）';
 COMMENT ON COLUMN prompt_template.id IS '主键（雪花 BIGINT）';
 COMMENT ON COLUMN prompt_template.code IS '模板编码，如 cet.tutor.system';
-COMMENT ON COLUMN prompt_template.name IS '模板展示名称';
+COMMENT ON COLUMN prompt_template.name IS '模板展示名称（须中文）';
 COMMENT ON COLUMN prompt_template.role IS 'SYSTEM|USER';
 COMMENT ON COLUMN prompt_template.prompt_group IS '分组：CHAT|CET_PLANNER|CET_TUTOR|CET_EVAL|CET_SAFETY 等';
-COMMENT ON COLUMN prompt_template.content IS '当前已发布正文，可含变量占位';
+COMMENT ON COLUMN prompt_template.content IS '当前已发布正文（须中文），可含 {{变量}}；JSON 键名/枚举可协议英文';
 COMMENT ON COLUMN prompt_template.published_version IS '当前已发布版本号';
 COMMENT ON COLUMN prompt_template.status IS 'ACTIVE/DISABLED';
 COMMENT ON COLUMN prompt_template.create_time IS '创建时间';

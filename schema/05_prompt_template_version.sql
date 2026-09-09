@@ -24,10 +24,10 @@ COMMENT ON TABLE prompt_template_version IS '提示词版本历史（DRAFT/PUBLI
 COMMENT ON COLUMN prompt_template_version.id IS '主键（雪花 BIGINT）';
 COMMENT ON COLUMN prompt_template_version.code IS '模板编码，关联 prompt_template.code';
 COMMENT ON COLUMN prompt_template_version.version IS '版本号（同 code 内递增）';
-COMMENT ON COLUMN prompt_template_version.name IS '该版本展示名称';
+COMMENT ON COLUMN prompt_template_version.name IS '该版本展示名称（须中文）';
 COMMENT ON COLUMN prompt_template_version.role IS 'SYSTEM|USER';
 COMMENT ON COLUMN prompt_template_version.prompt_group IS '分组：CHAT|CET_* 等';
-COMMENT ON COLUMN prompt_template_version.content IS '该版本正文';
+COMMENT ON COLUMN prompt_template_version.content IS '该版本正文（须中文），可含 {{变量}}；JSON 键名/枚举可协议英文';
 COMMENT ON COLUMN prompt_template_version.status IS 'DRAFT|PUBLISHED|SUPERSEDED';
 COMMENT ON COLUMN prompt_template_version.change_note IS '变更说明';
 COMMENT ON COLUMN prompt_template_version.created_by IS '操作者 admin_id；种子为 system';

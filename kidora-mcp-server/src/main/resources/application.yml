@@ -1,0 +1,42 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: kidora-mcp-server
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  datasource:
+    url: ${KIDORA_DB_URL:jdbc:postgresql://127.0.0.1:5432/kidora_ai}
+    username: ${KIDORA_DB_USER:postgres}
+    password: ${KIDORA_DB_PASSWORD:1234567890}
+    driver-class-name: org.postgresql.Driver
+  ai:
+    mcp:
+      server:
+        name: kidora-mcp-server
+        version: 1.0.0
+        type: SYNC
+        instructions: "Kidora MCP tools: echo_ping, asr_transcribe, tts_synthesize, pronunciation_score"
+        capabilities:
+          tool: true
+
+kidora:
+  mcp:
+    auth:
+      enabled: ${KIDORA_MCP_AUTH_ENABLED:false}
+      api-key: ${KIDORA_MCP_API_KEY:}
+  speech:
+    # stub：本地/CI；db：读 speech_route.primary（iflytek/tencent）
+    mode: ${KIDORA_SPEECH_MODE:stub}
+    api-key-secret: ${KIDORA_API_KEY_SECRET:change-me-kidora-api-key-secret-32bytes!}
+    azure:
+      key: ${AZURE_SPEECH_KEY:}
+      region: ${AZURE_SPEECH_REGION:}
+      default-voice: en-US-AvaNeural
+      default-locale: en-US
+
+logging:
+  level:
+    root: INFO
+    com.wuji.kidora.ai.mcp: INFO

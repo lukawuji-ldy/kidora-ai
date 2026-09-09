@@ -27,3 +27,7 @@
 \ir 14_cet_turn_assessment.sql
 \ir 15_cet_session_report.sql
 \ir 16_cet_safety_event.sql
+\ir 17_mcp_server_ref.sql
+\ir 18_mcp_tool_binding.sql
+\ir 19_speech_vendor_config.sql
+\ir 20_speech_route.sql

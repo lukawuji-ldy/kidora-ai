@@ -13,6 +13,12 @@ spring:
     openai:
       api-key: ${KIDORA_LLM_API_KEY:sk-placeholder}
       base-url: https://api.openai.com
+    mcp:
+      client:
+        enabled: ${kidora.mcp.enabled:false}
+        request-timeout: 30s
+        # MCP Server 未起时不拖垮 CET 进程；工具在首次调用时发现
+        initialized: false
   flyway:
     enabled: false
 
@@ -29,6 +35,13 @@ kidora:
     timeout: 60s
   cet:
     blocking-pool-size: 16
+  mcp:
+    enabled: ${KIDORA_MCP_ENABLED:false}
+    server-url: ${KIDORA_MCP_SERVER_URL:http://127.0.0.1:8081}
+    sse-endpoint: /sse
+    auth:
+      enabled: ${KIDORA_MCP_AUTH_ENABLED:false}
+      api-key: ${KIDORA_MCP_API_KEY:}
 
 management:
   endpoints:

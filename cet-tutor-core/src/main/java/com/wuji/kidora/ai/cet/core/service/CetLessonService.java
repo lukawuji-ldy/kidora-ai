@@ -17,17 +17,23 @@ import com.wuji.kidora.ai.cet.core.safety.SafetyAction;
 import com.wuji.kidora.ai.cet.core.safety.SafetyDecision;
 import com.wuji.kidora.ai.cet.core.safety.SafetyGuard;
 import com.wuji.kidora.ai.cet.core.tutor.TutorLoop;
+import com.wuji.kidora.ai.cet.core.speech.CetStreamEvent;
+import com.wuji.kidora.ai.cet.core.speech.SpeechToolPort;
+import com.wuji.kidora.ai.cet.core.speech.TurnInput;
 import com.wuji.kidora.ai.common.exception.ErrorCode;
 import com.wuji.kidora.ai.common.exception.KidoraException;
 import com.wuji.kidora.ai.common.util.IdGenerator;
 import com.wuji.kidora.ai.memory.model.LearnerProfile;
 import com.wuji.kidora.ai.memory.repo.LearnerProfileRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * CET 课时编排门面（开课 / 小循环 / 结课）。
@@ -52,6 +58,7 @@ public class CetLessonService {
     private final TutorLoop tutorLoop;
     private final SessionEvaluator sessionEvaluator;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<SpeechToolPort> speechToolPort;
 
     public CetLessonService(LearnerProfileRepository learnerProfileRepository,
                             CetLessonSessionRepository lessonSessionRepository,
@@ -64,7 +71,8 @@ public class CetLessonService {
                             LessonPlanner lessonPlanner,
                             TutorLoop tutorLoop,
                             SessionEvaluator sessionEvaluator,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper,
+                            ObjectProvider<SpeechToolPort> speechToolPort) {
         this.learnerProfileRepository = learnerProfileRepository;
         this.lessonSessionRepository = lessonSessionRepository;
         this.trainingPlanRepository = trainingPlanRepository;
@@ -77,6 +85,7 @@ public class CetLessonService {
         this.tutorLoop = tutorLoop;
         this.sessionEvaluator = sessionEvaluator;
         this.objectMapper = objectMapper;
+        this.speechToolPort = speechToolPort;
     }
 
     public OpenResult openSession(String userId, String learnerId, String topic, String personaId) {
@@ -107,12 +116,17 @@ public class CetLessonService {
         return new OpenResult(session.lessonSessionId(), LessonStatus.PRACTICING.name(), plan.childSummary(), planId);
     }
 
-    public Flux<String> streamTurn(String userId, String lessonSessionId, String childText) {
+    public Flux<CetStreamEvent> streamTurn(String userId, String lessonSessionId, TurnInput input) {
         LessonSession session = requireOwnedSession(userId, lessonSessionId);
         if (session.status() != LessonStatus.PRACTICING) {
             throw new KidoraException(ErrorCode.CET_INVALID_STATE, "当前状态不可陪练: " + session.status());
         }
         ModelRouter.CallContext ctx = baseCtx(userId, session.learnerId(), lessonSessionId);
+
+        String childText = resolveChildText(input, speechToolPort.getIfAvailable());
+        String rawAudio = input == null ? null : input.audioBase64();
+        String locale = input == null ? null : input.locale();
+        String referenceText = input == null ? null : input.referenceText();
 
         SafetyDecision in = safetyGuard.checkInput(childText, ctx);
         if (in.isHardBlock()) {
@@ -127,7 +141,7 @@ public class CetLessonService {
             int turnIndex = tutorTurnRepository.nextTurnIndex(lessonSessionId);
             tutorTurnRepository.insert(lessonSessionId, session.learnerId(), turnIndex, "warmup",
                     softRedirect, childText);
-            return Flux.just(softRedirect);
+            return Flux.just(CetStreamEvent.delta(softRedirect));
         }
         String effectiveChild = in.action() == SafetyAction.REWRITE && StringUtils.hasText(in.rewriteText())
                 ? in.rewriteText() : childText;
@@ -148,7 +162,69 @@ public class CetLessonService {
             persistSafety(lessonSessionId, turnId, session.learnerId(), userId, "OUTPUT", out);
         }
         tutorTurnRepository.updateTutorText(turnId, finalText);
-        return TutorLoop.chunkForSse(finalText);
+
+        Flux<CetStreamEvent> deltas = TutorLoop.chunkForSse(finalText).map(CetStreamEvent::delta);
+        SpeechToolPort port = speechToolPort.getIfAvailable();
+        if (port == null) {
+            return deltas;
+        }
+        return deltas.concatWith(Flux.defer(() -> Flux.fromIterable(
+                buildSpeechExtras(port, finalText, rawAudio, locale, referenceText))));
+    }
+
+    /**
+     * 解析儿童文本：优先 ASR，否则 text。
+     *
+     * @param input 输入
+     * @param port  语音端口（可空）
+     * @return 文本
+     */
+    static String resolveChildText(TurnInput input, SpeechToolPort port) {
+        if (input != null && StringUtils.hasText(input.audioBase64())) {
+            if (port == null) {
+                throw new KidoraException(ErrorCode.BAD_REQUEST, "语音输入需要启用 MCP 语音能力");
+            }
+            Optional<SpeechToolPort.AsrResult> asr = port.asr(input.audioBase64(), input.locale());
+            String text = asr.map(SpeechToolPort.AsrResult::text).filter(StringUtils::hasText).orElse(null);
+            if (!StringUtils.hasText(text)) {
+                throw new KidoraException(ErrorCode.BAD_REQUEST, "ASR 未能识别语音");
+            }
+            return text;
+        }
+        if (input != null && StringUtils.hasText(input.text())) {
+            return input.text().trim();
+        }
+        throw new KidoraException(ErrorCode.BAD_REQUEST, "text 或 audioBase64 必填其一");
+    }
+
+    /**
+     * 构建 TTS / 发音附加事件。
+     */
+    static List<CetStreamEvent> buildSpeechExtras(SpeechToolPort port, String finalText,
+                                                  String rawAudio, String locale, String referenceText) {
+        List<CetStreamEvent> extras = new ArrayList<>();
+        if (port == null) {
+            return extras;
+        }
+        port.tts(finalText, null, locale).ifPresent(tts -> extras.add(CetStreamEvent.tts(
+                "{\"audioBase64\":\"" + jsonEscape(nullToEmpty(tts.audioBase64()))
+                        + "\",\"mimeType\":\"" + jsonEscape(nullToEmpty(tts.mimeType()))
+                        + "\",\"provider\":\"" + jsonEscape(nullToEmpty(tts.provider())) + "\"}")));
+        if (StringUtils.hasText(rawAudio) && StringUtils.hasText(referenceText)) {
+            port.score(rawAudio, referenceText, locale).ifPresent(p -> extras.add(CetStreamEvent.pronunciation(
+                    "{\"overall\":" + p.overall() + ",\"accuracy\":" + p.accuracy()
+                            + ",\"fluency\":" + p.fluency() + ",\"completeness\":" + p.completeness()
+                            + ",\"provider\":\"" + jsonEscape(nullToEmpty(p.provider())) + "\"}")));
+        }
+        return extras;
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
+    }
+
+    private static String jsonEscape(String raw) {
+        return raw.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /**

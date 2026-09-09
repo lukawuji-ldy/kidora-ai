@@ -13,7 +13,8 @@ import reactor.core.scheduler.Schedulers;
  * @author liudy
  */
 @Configuration
-@EnableConfigurationProperties({JwtProperties.class, CetServerProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, CetServerProperties.class,
+        com.wuji.kidora.ai.cet.server.mcp.KidoraMcpProperties.class})
 public class CetServerConfig {
 
     @Bean
