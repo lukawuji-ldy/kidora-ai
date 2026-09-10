@@ -2,7 +2,7 @@
 
 - **日期：** 2026-09-10
 - **仓库：** `kidora-ai`
-- **状态：** Draft
+- **状态：** Implemented（2026-09-10）
 - **关联：** `cet.tutor.opening.system` / `cet.tutor.opening.user`；`TutorLoop.generateOpening`；既有中文脚手架 spec（`2026-09-10-cet-tutor-zh-scaffold-tts-design.md`）
 
 ## 1. 背景与目标
