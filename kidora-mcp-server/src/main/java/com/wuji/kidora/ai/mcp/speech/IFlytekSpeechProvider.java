@@ -2,21 +2,38 @@ package com.wuji.kidora.ai.mcp.speech;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.wuji.kidora.ai.common.crypto.SecretCipher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 讯飞整栈：听写 ASR + 合成 TTS + ISE 发音（英文句子）。
  * <p>
- * 听写/合成走开放平台 WebAPI；ISE 使用评测 HTTP（兼容短音频），分数映射到统一字段。
+ * 走控制台流式 WebSocket（听写 / 在线合成 / 评测）；旧版 HTTP
+ * {@code api.xfyun.cn/v1/service/v1/*} 已不对新应用开放。鉴权与管理台
+ * {@code IflytekWsAuth} 一致：HMAC-SHA256（apiKey + apiSecret）。
  *
  * @author liudy
  */
@@ -27,20 +44,32 @@ public class IFlytekSpeechProvider implements SpeechProvider {
     private static final Logger log = LoggerFactory.getLogger(IFlytekSpeechProvider.class);
 
     private static final Duration TIMEOUT = Duration.ofSeconds(45);
+    private static final int WS_CONNECT_SECONDS = 20;
+    private static final int WS_DONE_SECONDS = 45;
+    private static final int AUDIO_CHUNK = 1280;
+
+    private static final String IAT_HOST = "iat-api.xfyun.cn";
+    private static final String IAT_PATH = "/v2/iat";
+    private static final String TTS_HOST = "tts-api.xfyun.cn";
+    private static final String TTS_PATH = "/v2/tts";
+    private static final String ISE_HOST = "ise-api.xfyun.cn";
+    private static final String ISE_PATH = "/v2/open-ise";
+
+    private static final DateTimeFormatter RFC1123 = DateTimeFormatter
+            .ofPattern("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+            .withZone(ZoneOffset.UTC);
 
     private final SpeechVendorRepository vendorRepository;
     private final SecretCipher secretCipher;
     private final ObjectMapper objectMapper;
     private final WebClient webClient;
+    private final HttpClient httpClient;
 
     public IFlytekSpeechProvider(SpeechVendorRepository vendorRepository,
                                  SecretCipher secretCipher,
                                  ObjectMapper objectMapper,
                                  WebClient.Builder webClientBuilder) {
-        this.vendorRepository = vendorRepository;
-        this.secretCipher = secretCipher;
-        this.objectMapper = objectMapper;
-        this.webClient = webClientBuilder.build();
+        this(vendorRepository, secretCipher, objectMapper, webClientBuilder.build());
     }
 
     /** 测试注入 */
@@ -52,6 +81,7 @@ public class IFlytekSpeechProvider implements SpeechProvider {
         this.secretCipher = secretCipher;
         this.objectMapper = objectMapper;
         this.webClient = webClient;
+        this.httpClient = HttpClient.newHttpClient();
     }
 
     @Override
@@ -66,28 +96,23 @@ public class IFlytekSpeechProvider implements SpeechProvider {
             return notConfigured();
         }
         try {
-            byte[] audio = resolveAudio(audioBase64, audioUrl);
+            byte[] raw = resolveAudio(audioBase64, audioUrl);
+            if (isM4a(raw)) {
+                return SpeechOutcome.error("INVALID_AUDIO",
+                        "iFlytek ASR requires wav/pcm/mp3; do not upload m4a", PROVIDER_ID);
+            }
+            String encoding = iatEncoding(raw);
+            byte[] audio = "lame".equals(encoding) ? raw : toPcmOrRaw(raw);
             VendorCredentials c = creds.get();
-            // 开放平台一句话听写（短音频）HTTP：X-Appid / X-CurTime / X-Param / X-CheckSum
-            String curTime = String.valueOf(System.currentTimeMillis() / 1000);
-            String paramJson = "{\"engine_type\":\"sms16k\",\"aue\":\"raw\"}";
-            String paramBase64 = Base64.getEncoder().encodeToString(paramJson.getBytes(StandardCharsets.UTF_8));
-            String checksum = md5(c.get("apiKey") + curTime + paramBase64);
-            String body = webClient.post()
-                    .uri("https://api.xfyun.cn/v1/service/v1/iat")
-                    .header("X-Appid", c.get("appId"))
-                    .header("X-CurTime", curTime)
-                    .header("X-Param", paramBase64)
-                    .header("X-CheckSum", checksum)
-                    .header("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
-                    .bodyValue("audio=" + urlEncode(Base64.getEncoder().encodeToString(audio)))
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block(TIMEOUT);
-            return mapAsr(body, locale);
+            String url = buildWssUrl(IAT_HOST, IAT_PATH, c.get("apiKey"), c.get("apiSecret"));
+            String text = iatRecognize(c.get("appId"), url, audio, encoding);
+            String loc = defaultLocale(locale);
+            return SpeechOutcome.ok("{\"text\":\"" + escape(text) + "\",\"confidence\":0.9,\"locale\":\""
+                    + escape(loc) + "\",\"provider\":\"" + PROVIDER_ID + "\"}");
         } catch (Exception e) {
             log.warn("iFlytek ASR failed: {}", e.getMessage());
-            return SpeechOutcome.error("VENDOR_API_FAILED", "iFlytek ASR failed", PROVIDER_ID);
+            return SpeechOutcome.error("VENDOR_API_FAILED",
+                    StringUtils.hasText(e.getMessage()) ? e.getMessage() : "iFlytek ASR failed", PROVIDER_ID);
         }
     }
 
@@ -99,29 +124,11 @@ public class IFlytekSpeechProvider implements SpeechProvider {
         }
         try {
             VendorCredentials c = creds.get();
-            String curTime = String.valueOf(System.currentTimeMillis() / 1000);
-            String vcn = StringUtils.hasText(voice) ? voice : "x2_xiaoyan";
-            String paramJson = "{\"aue\":\"lame\",\"auf\":\"audio/L16;rate=16000\",\"voice_name\":\""
-                    + vcn + "\",\"engine_type\":\"intp65\"}";
-            String paramBase64 = Base64.getEncoder().encodeToString(paramJson.getBytes(StandardCharsets.UTF_8));
-            String checksum = md5(c.get("apiKey") + curTime + paramBase64);
-            byte[] audio = webClient.post()
-                    .uri("https://api.xfyun.cn/v1/service/v1/tts")
-                    .header("X-Appid", c.get("appId"))
-                    .header("X-CurTime", curTime)
-                    .header("X-Param", paramBase64)
-                    .header("X-CheckSum", checksum)
-                    .header("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
-                    .bodyValue("text=" + urlEncode(text))
-                    .retrieve()
-                    .bodyToMono(byte[].class)
-                    .block(TIMEOUT);
+            String vcn = StringUtils.hasText(voice) ? voice.trim() : "x4_xiaoyan";
+            String url = buildWssUrl(TTS_HOST, TTS_PATH, c.get("apiKey"), c.get("apiSecret"));
+            byte[] audio = ttsSynthesize(c.get("appId"), url, text, vcn);
             if (audio == null || audio.length == 0) {
                 return SpeechOutcome.error("VENDOR_API_FAILED", "Empty TTS body", PROVIDER_ID);
-            }
-            // 可能返回 JSON 错误
-            if (audio.length > 0 && audio[0] == '{') {
-                return SpeechOutcome.error("VENDOR_API_FAILED", "iFlytek TTS error payload", PROVIDER_ID);
             }
             String loc = defaultLocale(locale);
             return SpeechOutcome.ok("{\"audioBase64\":\"" + Base64.getEncoder().encodeToString(audio)
@@ -129,7 +136,8 @@ public class IFlytekSpeechProvider implements SpeechProvider {
                     + "\",\"locale\":\"" + escape(loc) + "\",\"provider\":\"" + PROVIDER_ID + "\"}");
         } catch (Exception e) {
             log.warn("iFlytek TTS failed: {}", e.getMessage());
-            return SpeechOutcome.error("VENDOR_API_FAILED", "iFlytek TTS failed", PROVIDER_ID);
+            return SpeechOutcome.error("VENDOR_API_FAILED",
+                    StringUtils.hasText(e.getMessage()) ? e.getMessage() : "iFlytek TTS failed", PROVIDER_ID);
         }
     }
 
@@ -140,48 +148,310 @@ public class IFlytekSpeechProvider implements SpeechProvider {
             return notConfigured();
         }
         try {
-            byte[] audio = resolveAudio(audioBase64, null);
+            byte[] raw = resolveAudio(audioBase64, null);
+            if (isM4a(raw)) {
+                return SpeechOutcome.error("INVALID_AUDIO",
+                        "iFlytek ISE requires wav/pcm/mp3; do not upload m4a", PROVIDER_ID);
+            }
+            String aue = isMp3(raw) ? "lame" : "raw";
+            byte[] pcm = "lame".equals(aue) ? raw : toPcmOrRaw(raw);
             VendorCredentials c = creds.get();
-            String curTime = String.valueOf(System.currentTimeMillis() / 1000);
-            String paramJson = "{\"aue\":\"raw\",\"result_level\":\"entirety\",\"language\":\"en_us\","
-                    + "\"category\":\"read_sentence\",\"extra_ability\":\"multi_dimension\"}";
-            String paramBase64 = Base64.getEncoder().encodeToString(paramJson.getBytes(StandardCharsets.UTF_8));
-            String checksum = md5(c.get("apiKey") + curTime + paramBase64);
-            String form = "audio=" + urlEncode(Base64.getEncoder().encodeToString(audio))
-                    + "&text=" + urlEncode(referenceText);
-            String body = webClient.post()
-                    .uri("https://api.xfyun.cn/v1/service/v1/ise")
-                    .header("X-Appid", c.get("appId"))
-                    .header("X-CurTime", curTime)
-                    .header("X-Param", paramBase64)
-                    .header("X-CheckSum", checksum)
-                    .header("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
-                    .bodyValue(form)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block(TIMEOUT);
-            return mapIse(body, locale, referenceText);
+            String url = buildWssUrl(ISE_HOST, ISE_PATH, c.get("apiKey"), c.get("apiSecret"));
+            return iseEvaluate(c.get("appId"), url, pcm, referenceText, locale, aue);
         } catch (Exception e) {
             log.warn("iFlytek ISE failed: {}", e.getMessage());
-            return SpeechOutcome.error("VENDOR_API_FAILED", "iFlytek ISE failed", PROVIDER_ID);
+            return SpeechOutcome.error("VENDOR_API_FAILED",
+                    StringUtils.hasText(e.getMessage()) ? e.getMessage() : "iFlytek ISE failed", PROVIDER_ID);
         }
     }
 
-    SpeechOutcome mapAsr(String body, String locale) throws Exception {
-        if (!StringUtils.hasText(body)) {
-            return SpeechOutcome.error("VENDOR_API_FAILED", "Empty ASR", PROVIDER_ID);
+    private String iatRecognize(String appId, String wssUrl, byte[] audio, String encoding) throws Exception {
+        CompletableFuture<String> done = new CompletableFuture<>();
+        StringBuilder text = new StringBuilder();
+        String enc = StringUtils.hasText(encoding) ? encoding : "raw";
+        WebSocket.Listener listener = new WebSocket.Listener() {
+            private final StringBuilder frameBuf = new StringBuilder();
+
+            @Override
+            public void onOpen(WebSocket webSocket) {
+                webSocket.request(1);
+                try {
+                    int offset = 0;
+                    boolean first = true;
+                    do {
+                        int end = Math.min(offset + AUDIO_CHUNK, audio.length);
+                        byte[] part = offset >= audio.length
+                                ? new byte[0]
+                                : Arrays.copyOfRange(audio, offset, end);
+                        offset = end;
+                        int st = first ? (offset >= audio.length ? 2 : 0) : (offset >= audio.length ? 2 : 1);
+                        first = false;
+                        ObjectNode frame = objectMapper.createObjectNode();
+                        if (st == 0 || (st == 2 && audio.length <= AUDIO_CHUNK)) {
+                            frame.set("common", objectMapper.createObjectNode().put("app_id", appId));
+                            frame.set("business", objectMapper.createObjectNode()
+                                    .put("language", "en_us")
+                                    .put("domain", "iat")
+                                    .put("accent", "mandarin")
+                                    .put("vad_eos", 3000));
+                        }
+                        frame.set("data", objectMapper.createObjectNode()
+                                .put("status", st)
+                                .put("format", "audio/L16;rate=16000")
+                                .put("encoding", enc)
+                                .put("audio", Base64.getEncoder().encodeToString(part)));
+                        webSocket.sendText(objectMapper.writeValueAsString(frame), true);
+                        if (st == 2) {
+                            break;
+                        }
+                    } while (offset < audio.length || first);
+                } catch (Exception e) {
+                    done.completeExceptionally(e);
+                }
+            }
+
+            @Override
+            public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+                webSocket.request(1);
+                Optional<String> msg = accumulateWsText(frameBuf, data, last);
+                if (msg.isEmpty()) {
+                    return null;
+                }
+                try {
+                    JsonNode root = objectMapper.readTree(msg.get());
+                    int code = root.path("code").asInt(0);
+                    if (code != 0) {
+                        done.completeExceptionally(new IllegalStateException(
+                                root.path("message").asText("ASR error code=" + code)));
+                        return null;
+                    }
+                    JsonNode ws = root.path("data").path("result").path("ws");
+                    if (ws.isArray()) {
+                        for (JsonNode w : ws) {
+                            JsonNode cw = w.path("cw");
+                            if (cw.isArray()) {
+                                for (JsonNode c : cw) {
+                                    text.append(c.path("w").asText(""));
+                                }
+                            }
+                        }
+                    }
+                    if (root.path("data").path("status").asInt(-1) == 2) {
+                        done.complete(text.toString());
+                    }
+                } catch (Exception e) {
+                    done.completeExceptionally(e);
+                }
+                return null;
+            }
+
+            @Override
+            public void onError(WebSocket webSocket, Throwable error) {
+                done.completeExceptionally(error);
+            }
+        };
+        httpClient.newWebSocketBuilder().buildAsync(URI.create(wssUrl), listener)
+                .get(WS_CONNECT_SECONDS, TimeUnit.SECONDS);
+        return done.get(WS_DONE_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private byte[] ttsSynthesize(String appId, String wssUrl, String text, String vcn) throws Exception {
+        CompletableFuture<byte[]> done = new CompletableFuture<>();
+        java.io.ByteArrayOutputStream audioOut = new java.io.ByteArrayOutputStream();
+        WebSocket.Listener listener = new WebSocket.Listener() {
+            private final StringBuilder frameBuf = new StringBuilder();
+
+            @Override
+            public void onOpen(WebSocket webSocket) {
+                webSocket.request(1);
+                try {
+                    ObjectNode frame = objectMapper.createObjectNode();
+                    frame.set("common", objectMapper.createObjectNode().put("app_id", appId));
+                    frame.set("business", objectMapper.createObjectNode()
+                            .put("aue", "lame")
+                            .put("auf", "audio/L16;rate=16000")
+                            .put("vcn", vcn)
+                            .put("tte", "UTF8")
+                            .put("sfl", 1));
+                    frame.set("data", objectMapper.createObjectNode()
+                            .put("status", 2)
+                            .put("text", Base64.getEncoder().encodeToString(
+                                    text.getBytes(StandardCharsets.UTF_8))));
+                    webSocket.sendText(objectMapper.writeValueAsString(frame), true);
+                } catch (Exception e) {
+                    done.completeExceptionally(e);
+                }
+            }
+
+            @Override
+            public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+                webSocket.request(1);
+                Optional<String> msg = accumulateWsText(frameBuf, data, last);
+                if (msg.isEmpty()) {
+                    return null;
+                }
+                try {
+                    JsonNode root = objectMapper.readTree(msg.get());
+                    int code = root.path("code").asInt(0);
+                    if (code != 0) {
+                        String err = root.path("message").asText("");
+                        if (!StringUtils.hasText(err)) {
+                            err = root.path("desc").asText("TTS error code=" + code);
+                        }
+                        done.completeExceptionally(new IllegalStateException(
+                                StringUtils.hasText(err) ? "code=" + code + ", " + err : "TTS error code=" + code));
+                        return null;
+                    }
+                    String chunk = root.path("data").path("audio").asText("");
+                    if (StringUtils.hasText(chunk)) {
+                        decodeTtsAudioChunk(audioOut, chunk);
+                    }
+                    if (root.path("data").path("status").asInt(-1) == 2) {
+                        done.complete(audioOut.toByteArray());
+                    }
+                } catch (Exception e) {
+                    done.completeExceptionally(e);
+                }
+                return null;
+            }
+
+            @Override
+            public void onError(WebSocket webSocket, Throwable error) {
+                done.completeExceptionally(error);
+            }
+        };
+        httpClient.newWebSocketBuilder().buildAsync(URI.create(wssUrl), listener)
+                .get(WS_CONNECT_SECONDS, TimeUnit.SECONDS);
+        return done.get(WS_DONE_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private SpeechOutcome iseEvaluate(String appId, String wssUrl, byte[] pcm,
+                                      String referenceText, String locale, String aue) throws Exception {
+        CompletableFuture<SpeechOutcome> done = new CompletableFuture<>();
+        String audioEnc = StringUtils.hasText(aue) ? aue : "raw";
+        WebSocket.Listener listener = new WebSocket.Listener() {
+            private final StringBuilder frameBuf = new StringBuilder();
+
+            @Override
+            public void onOpen(WebSocket webSocket) {
+                webSocket.request(1);
+                try {
+                    ObjectNode ssb = objectMapper.createObjectNode();
+                    ssb.set("common", objectMapper.createObjectNode().put("app_id", appId));
+                    ssb.set("business", objectMapper.createObjectNode()
+                            .put("sub", "ise")
+                            .put("ent", "en_vip")
+                            .put("category", "read_sentence")
+                            .put("cmd", "ssb")
+                            .put("auf", "audio/L16;rate=16000")
+                            .put("aue", audioEnc)
+                            .put("text", "\uFEFF" + (referenceText == null ? "" : referenceText))
+                            .put("ttp_skip", true)
+                            .put("rstcd", "utf8"));
+                    ssb.set("data", objectMapper.createObjectNode().put("status", 0));
+                    webSocket.sendText(objectMapper.writeValueAsString(ssb), true);
+
+                    int offset = 0;
+                    boolean first = true;
+                    while (offset < pcm.length) {
+                        int end = Math.min(offset + AUDIO_CHUNK, pcm.length);
+                        byte[] part = Arrays.copyOfRange(pcm, offset, end);
+                        offset = end;
+                        int aus = first ? 1 : (offset >= pcm.length ? 4 : 2);
+                        first = false;
+                        ObjectNode auw = objectMapper.createObjectNode();
+                        auw.set("business", objectMapper.createObjectNode()
+                                .put("cmd", "auw")
+                                .put("aus", aus)
+                                .put("aue", audioEnc));
+                        auw.set("data", objectMapper.createObjectNode()
+                                .put("status", offset >= pcm.length ? 2 : 1)
+                                .put("data", Base64.getEncoder().encodeToString(part)));
+                        webSocket.sendText(objectMapper.writeValueAsString(auw), true);
+                    }
+                } catch (Exception e) {
+                    done.completeExceptionally(e);
+                }
+            }
+
+            @Override
+            public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+                webSocket.request(1);
+                Optional<String> msg = accumulateWsText(frameBuf, data, last);
+                if (msg.isEmpty()) {
+                    return null;
+                }
+                try {
+                    JsonNode root = objectMapper.readTree(msg.get());
+                    int code = root.path("code").asInt(0);
+                    if (code != 0) {
+                        done.complete(SpeechOutcome.error("VENDOR_API_FAILED",
+                                root.path("message").asText("ISE error code=" + code), PROVIDER_ID));
+                        return null;
+                    }
+                    String dataField = root.path("data").path("data").asText("");
+                    if (StringUtils.hasText(dataField) && root.path("data").path("status").asInt(-1) == 2) {
+                        done.complete(mapIsePayload(dataField, locale, referenceText));
+                    }
+                } catch (Exception e) {
+                    done.completeExceptionally(e);
+                }
+                return null;
+            }
+
+            @Override
+            public void onError(WebSocket webSocket, Throwable error) {
+                done.completeExceptionally(error);
+            }
+        };
+        httpClient.newWebSocketBuilder().buildAsync(URI.create(wssUrl), listener)
+                .get(WS_CONNECT_SECONDS, TimeUnit.SECONDS);
+        return done.get(WS_DONE_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * 拼装 JDK HttpClient WebSocket 文本分片：仅当 {@code last=true} 时返回完整消息。
+     * <p>
+     * TTS/ISE 回包常含大段 base64，约 4KB 处被拆帧；未拼帧直接 {@code readTree} 会触发
+     * {@code JsonEOFException}（与腾讯 SOE 侧 {@code buf}/{@code last} 处理一致）。
+     */
+    static Optional<String> accumulateWsText(StringBuilder buf, CharSequence data, boolean last) {
+        buf.append(data);
+        if (!last) {
+            return Optional.empty();
         }
-        JsonNode root = objectMapper.readTree(body);
-        if (root.has("code") && root.path("code").asInt() != 0) {
-            return SpeechOutcome.error("VENDOR_API_FAILED", root.path("desc").asText("ASR error"), PROVIDER_ID);
+        String msg = buf.toString();
+        buf.setLength(0);
+        return Optional.of(msg);
+    }
+
+    /**
+     * 讯飞 TTS 每帧 {@code data.audio} 为独立 base64，须逐帧 decode 后拼二进制（官方 demo 同）。
+     * 不可把多帧 base64 字符串拼成一串再 decode（中间 padding {@code =} 会触发
+     * {@code Incorrect ending byte}）。
+     */
+    static void decodeTtsAudioChunk(java.io.ByteArrayOutputStream out, String chunkB64) {
+        if (!StringUtils.hasText(chunkB64)) {
+            return;
         }
-        String text = root.path("data").asText("");
-        if (!StringUtils.hasText(text) && root.has("result")) {
-            text = root.path("result").asText("");
+        try {
+            out.write(Base64.getDecoder().decode(chunkB64.trim()));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("TTS audio buffer write failed", e);
         }
-        String loc = defaultLocale(locale);
-        return SpeechOutcome.ok("{\"text\":\"" + escape(text) + "\",\"confidence\":0.9,\"locale\":\""
-                + escape(loc) + "\",\"provider\":\"" + PROVIDER_ID + "\"}");
+    }
+
+    /**
+     * 映射流式 ISE 最终 data（base64 XML/JSON）到统一分数字段。
+     */
+    SpeechOutcome mapIsePayload(String dataField, String locale, String referenceText) throws Exception {
+        String decoded;
+        try {
+            decoded = new String(Base64.getDecoder().decode(dataField), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            decoded = dataField;
+        }
+        return mapIse(decoded, locale, referenceText);
     }
 
     /**
@@ -200,17 +470,27 @@ public class IFlytekSpeechProvider implements SpeechProvider {
         if (!StringUtils.hasText(body)) {
             return SpeechOutcome.error("VENDOR_API_FAILED", "Empty ISE", PROVIDER_ID);
         }
-        // 部分接口返回 XML；尝试从 JSON data 或正则提取
         if (body.trim().startsWith("{")) {
             JsonNode root = objectMapper.readTree(body);
             if (root.has("code") && root.path("code").asInt() != 0) {
-                return SpeechOutcome.error("VENDOR_API_FAILED", root.path("desc").asText("ISE error"), PROVIDER_ID);
+                return SpeechOutcome.error("VENDOR_API_FAILED", root.path("message").asText(
+                        root.path("desc").asText("ISE error")), PROVIDER_ID);
             }
             JsonNode data = root.path("data");
-            double overall = firstDouble(data, "total_score", "overall");
-            double accuracy = firstDouble(data, "accuracy_score", "accuracy");
-            double fluency = firstDouble(data, "fluency_score", "fluency");
-            double completeness = firstDouble(data, "integrity_score", "completeness");
+            JsonNode readChapter = root.path("read_sentence").path("rec_paper").path("read_chapter");
+            if (readChapter.isMissingNode()) {
+                readChapter = root.path("read_chapter");
+            }
+            double overall = firstDouble(readChapter, "total_score", "overall");
+            double accuracy = firstDouble(readChapter, "accuracy_score", "accuracy");
+            double fluency = firstDouble(readChapter, "fluency_score", "fluency");
+            double completeness = firstDouble(readChapter, "integrity_score", "completeness");
+            if (overall == 0 && accuracy == 0) {
+                overall = firstDouble(data, "total_score", "overall");
+                accuracy = firstDouble(data, "accuracy_score", "accuracy");
+                fluency = firstDouble(data, "fluency_score", "fluency");
+                completeness = firstDouble(data, "integrity_score", "completeness");
+            }
             if (overall == 0 && accuracy == 0) {
                 overall = extractXmlScore(body, "total_score");
                 accuracy = extractXmlScore(body, "accuracy_score");
@@ -226,6 +506,71 @@ public class IFlytekSpeechProvider implements SpeechProvider {
         return mapIseScores(overall, accuracy, fluency, completeness, locale, referenceText);
     }
 
+    /**
+     * HMAC-SHA256 WebSocket 握手 URL（与管理台 IflytekWsAuth 一致）。
+     */
+    static String buildWssUrl(String host, String path, String apiKey, String apiSecret) {
+        return buildWssUrl(host, path, apiKey, apiSecret, RFC1123.format(ZonedDateTime.now(ZoneOffset.UTC)));
+    }
+
+    static String buildWssUrl(String host, String path, String apiKey, String apiSecret, String date) {
+        try {
+            String requestLine = "GET " + path + " HTTP/1.1";
+            String signatureOrigin = "host: " + host + "\n" + "date: " + date + "\n" + requestLine;
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(apiSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            String signature = Base64.getEncoder()
+                    .encodeToString(mac.doFinal(signatureOrigin.getBytes(StandardCharsets.UTF_8)));
+            String authorizationOrigin = "api_key=\"" + apiKey
+                    + "\", algorithm=\"hmac-sha256\", headers=\"host date request-line\", signature=\""
+                    + signature + "\"";
+            String authorization = Base64.getEncoder()
+                    .encodeToString(authorizationOrigin.getBytes(StandardCharsets.UTF_8));
+            return "wss://" + host + path
+                    + "?authorization=" + URLEncoder.encode(authorization, StandardCharsets.UTF_8)
+                    + "&date=" + URLEncoder.encode(date, StandardCharsets.UTF_8)
+                    + "&host=" + URLEncoder.encode(host, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new IllegalStateException("iFlytek WS auth failed: " + e.getMessage(), e);
+        }
+    }
+
+    static byte[] toPcmOrRaw(byte[] audio) {
+        if (isWav(audio) && audio.length > 44) {
+            byte[] pcm = new byte[audio.length - 44];
+            System.arraycopy(audio, 44, pcm, 0, pcm.length);
+            return pcm;
+        }
+        return audio;
+    }
+
+    static boolean isWav(byte[] audio) {
+        return audio != null && audio.length >= 12
+                && audio[0] == 'R' && audio[1] == 'I' && audio[2] == 'F' && audio[3] == 'F'
+                && audio[8] == 'W' && audio[9] == 'A' && audio[10] == 'V' && audio[11] == 'E';
+    }
+
+    static boolean isM4a(byte[] audio) {
+        return audio != null && audio.length >= 8
+                && audio[4] == 'f' && audio[5] == 't' && audio[6] == 'y' && audio[7] == 'p';
+    }
+
+    /** ID3 或 MPEG 帧同步字头。 */
+    static boolean isMp3(byte[] audio) {
+        if (audio == null || audio.length < 3) {
+            return false;
+        }
+        if (audio[0] == 'I' && audio[1] == 'D' && audio[2] == '3') {
+            return true;
+        }
+        return (audio[0] & 0xFF) == 0xFF && (audio[1] & 0xE0) == 0xE0;
+    }
+
+    /** 讯飞听写 encoding：mp3 → lame，其余 raw（pcm）。 */
+    static String iatEncoding(byte[] audio) {
+        return isMp3(audio) ? "lame" : "raw";
+    }
+
     private Optional<VendorCredentials> loadCreds() {
         if (vendorRepository == null) {
             return Optional.empty();
@@ -233,12 +578,12 @@ public class IFlytekSpeechProvider implements SpeechProvider {
         return vendorRepository.findByCode(PROVIDER_ID)
                 .filter(SpeechVendorRecord::active)
                 .flatMap(r -> VendorCredentials.parse(r.credentialsCipher(), secretCipher, objectMapper))
-                .filter(c -> c.hasText("appId") && c.hasText("apiKey"));
+                .filter(c -> c.hasText("appId") && c.hasText("apiKey") && c.hasText("apiSecret"));
     }
 
     private SpeechOutcome notConfigured() {
         return SpeechOutcome.error("VENDOR_NOT_CONFIGURED",
-                "iFlytek credentials missing in speech_vendor_config", PROVIDER_ID);
+                "iFlytek credentials missing in speech_vendor_config (need appId+apiKey+apiSecret)", PROVIDER_ID);
     }
 
     private byte[] resolveAudio(String audioBase64, String audioUrl) {
@@ -256,6 +601,9 @@ public class IFlytekSpeechProvider implements SpeechProvider {
     }
 
     private static double firstDouble(JsonNode node, String... keys) {
+        if (node == null || node.isMissingNode()) {
+            return 0;
+        }
         for (String k : keys) {
             if (node.has(k)) {
                 return node.path(k).asDouble(0);
@@ -269,7 +617,6 @@ public class IFlytekSpeechProvider implements SpeechProvider {
         String close = "</" + tag + ">";
         int i = xml.indexOf(open);
         if (i < 0) {
-            // attribute form total_score="85.0"
             String attr = tag + "=\"";
             int a = xml.indexOf(attr);
             if (a < 0) {
@@ -307,19 +654,5 @@ public class IFlytekSpeechProvider implements SpeechProvider {
             return "";
         }
         return raw.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    private static String md5(String raw) throws Exception {
-        java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
-        byte[] dig = md.digest(raw.getBytes(StandardCharsets.UTF_8));
-        StringBuilder sb = new StringBuilder();
-        for (byte b : dig) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
-
-    private static String urlEncode(String s) {
-        return java.net.URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 }

@@ -35,10 +35,26 @@ export async function apiJson<T>(
   return body.data as T;
 }
 
+export type TtsPayload = {
+  audioBase64?: string;
+  mimeType?: string;
+  provider?: string;
+};
+
+export type PronunciationPayload = {
+  overall?: number;
+  accuracy?: number;
+  fluency?: number;
+  completeness?: number;
+  provider?: string;
+};
+
 export type SseHandlers = {
   onDelta?: (text: string) => void;
   onSafety?: (text: string) => void;
   onError?: (text: string) => void;
+  onTts?: (payload: TtsPayload) => void;
+  onPronunciation?: (payload: PronunciationPayload) => void;
   onDone?: () => void;
 };
 
@@ -84,7 +100,19 @@ export async function postSse(
         if (eventName === "message.delta") handlers.onDelta?.(data);
         else if (eventName === "safety.block") handlers.onSafety?.(data);
         else if (eventName === "error") handlers.onError?.(data);
-        else if (eventName === "done") fireDone();
+        else if (eventName === "audio.tts") {
+          try {
+            handlers.onTts?.(JSON.parse(data) as TtsPayload);
+          } catch {
+            handlers.onError?.("TTS 数据解析失败");
+          }
+        } else if (eventName === "pronunciation") {
+          try {
+            handlers.onPronunciation?.(JSON.parse(data) as PronunciationPayload);
+          } catch {
+            handlers.onError?.("发音评分数据解析失败");
+          }
+        } else if (eventName === "done") fireDone();
       } else if (line.trim() === "") {
         eventName = "message";
       }

@@ -36,7 +36,7 @@ public class SpeechTools {
      * @return JSON：text / confidence / provider 或 error
      */
     @Tool(name = "asr_transcribe",
-            description = "Transcribe speech audio to text (stub or Azure Speech)")
+            description = "Transcribe speech audio to text (stub / iflytek / tencent / azure)")
     public String asrTranscribe(
             @ToolParam(description = "Audio content as base64", required = false) String audioBase64,
             @ToolParam(description = "Temporary audio URL", required = false) String audioUrl,
@@ -57,7 +57,7 @@ public class SpeechTools {
      * @return JSON：audioBase64 / mimeType / provider 或 error
      */
     @Tool(name = "tts_synthesize",
-            description = "Synthesize speech from text (stub or Azure Neural TTS)")
+            description = "Synthesize speech from text (stub / iflytek / tencent / azure)")
     public String ttsSynthesize(
             @ToolParam(description = "Text to speak") String text,
             @ToolParam(description = "Voice name", required = false) String voice,
@@ -78,7 +78,7 @@ public class SpeechTools {
      * @return JSON：overall / accuracy / fluency / completeness / provider 或 error
      */
     @Tool(name = "pronunciation_score",
-            description = "Score pronunciation against reference text (stub or Azure Pronunciation Assessment)")
+            description = "Score pronunciation against reference text (stub / iflytek / tencent / azure)")
     public String pronunciationScore(
             @ToolParam(description = "Audio content as base64") String audioBase64,
             @ToolParam(description = "Expected reference text") String referenceText,

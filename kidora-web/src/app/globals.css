@@ -253,10 +253,12 @@ textarea {
   display: flex;
   gap: 0.65rem;
   margin-top: 1rem;
+  flex-wrap: wrap;
 }
 
 .composer input {
   flex: 1;
+  min-width: 12rem;
   border: 2px solid color-mix(in srgb, var(--sky-2) 45%, white);
   border-radius: 999px;
   padding: 0.75rem 1rem;
@@ -265,6 +267,30 @@ textarea {
 
 .composer input:focus {
   border-color: var(--sea);
+}
+
+.btn.recording {
+  background: linear-gradient(145deg, #ff8a7a, #e85d4c);
+  border-color: #d94a3a;
+  color: #fff;
+  animation: pulse-rec 1.1s ease-in-out infinite;
+}
+
+.pron-scores {
+  margin-top: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+@keyframes pulse-rec {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
 }
 
 .topbar {

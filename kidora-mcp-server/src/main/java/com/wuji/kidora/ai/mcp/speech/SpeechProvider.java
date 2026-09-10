@@ -1,7 +1,8 @@
 package com.wuji.kidora.ai.mcp.speech;
 
 /**
- * 语音能力供应商（stub / azure）。工具层委托本接口，稳定 JSON 字段名不变。
+ * 语音能力供应商。实现含 stub、iflytek、tencent、azure；对外通常经 {@code RoutingSpeechProvider}
+ *（{@code mode=db} 仅走 primary，{@code mode=stub} 走 stub）。工具层委托本接口，稳定 JSON 字段名不变。
  *
  * @author liudy
  */
@@ -10,7 +11,7 @@ public interface SpeechProvider {
     /**
      * 供应商标识，写入响应 provider 字段。
      *
-     * @return stub 或 azure
+     * @return stub / iflytek / tencent / azure
      */
     String providerId();
 
