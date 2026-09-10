@@ -24,6 +24,13 @@ class LessonStateMachineTest {
     }
 
     @Test
+    void allowsReplanPath() {
+        assertDoesNotThrow(() -> LessonStateMachine.assertTransition(LessonStatus.EVALUATING, LessonStatus.REPLANNING));
+        assertDoesNotThrow(() -> LessonStateMachine.assertTransition(LessonStatus.REPLANNING, LessonStatus.PRACTICING));
+        assertDoesNotThrow(() -> LessonStateMachine.assertTransition(LessonStatus.EVALUATING, LessonStatus.PRACTICING));
+    }
+
+    @Test
     void rejectsInvalidJump() {
         KidoraException ex = assertThrows(KidoraException.class,
                 () -> LessonStateMachine.assertTransition(LessonStatus.CREATED, LessonStatus.COMPLETED));

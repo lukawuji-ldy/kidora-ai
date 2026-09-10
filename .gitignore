@@ -38,9 +38,5 @@ build/
 ### Mac OS ###
 .DS_Store
 
-/agents.md
-/findings.md
-/task_plan.md
-/progress.md
+# 本地草稿与临时调研（正式 docs / 计划文件纳入版本库）
 /tmp/
-/docs/

@@ -85,6 +85,7 @@ public class CetSessionController {
             case DELTA -> "message.delta";
             case TTS -> "audio.tts";
             case PRONUNCIATION -> "pronunciation";
+            case PLAN_UPDATED -> "plan.updated";
         };
         return ServerSentEvent.<String>builder().event(name).data(event.data()).build();
     }

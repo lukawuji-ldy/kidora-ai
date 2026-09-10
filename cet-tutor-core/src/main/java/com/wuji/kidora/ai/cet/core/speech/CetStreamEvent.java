@@ -15,7 +15,8 @@ public record CetStreamEvent(Type type, String data) {
     public enum Type {
         DELTA,
         TTS,
-        PRONUNCIATION
+        PRONUNCIATION,
+        PLAN_UPDATED
     }
 
     /**
@@ -46,5 +47,15 @@ public record CetStreamEvent(Type type, String data) {
      */
     public static CetStreamEvent pronunciation(String json) {
         return new CetStreamEvent(Type.PRONUNCIATION, json == null ? "{}" : json);
+    }
+
+    /**
+     * 计划已修订。
+     *
+     * @param json payload（planId/version/childSummary）
+     * @return 事件
+     */
+    public static CetStreamEvent planUpdated(String json) {
+        return new CetStreamEvent(Type.PLAN_UPDATED, json == null ? "{}" : json);
     }
 }

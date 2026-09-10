@@ -17,7 +17,7 @@ spring:
         name: kidora-mcp-server
         version: 1.0.0
         type: SYNC
-        instructions: "Kidora MCP tools: echo_ping, asr_transcribe, tts_synthesize, pronunciation_score"
+        instructions: "Kidora MCP tools: echo_ping, asr_transcribe, tts_synthesize, pronunciation_score, dictionary_lookup"
         capabilities:
           tool: true
 
@@ -35,6 +35,10 @@ kidora:
       region: ${AZURE_SPEECH_REGION:}
       default-voice: en-US-AvaNeural
       default-locale: en-US
+  dictionary:
+    # stub：本地/CI；http：Free Dictionary API
+    mode: ${KIDORA_DICTIONARY_MODE:stub}
+    http-base-url: ${KIDORA_DICTIONARY_HTTP_BASE:https://api.dictionaryapi.dev/api/v2/entries/en}
 
 logging:
   level:

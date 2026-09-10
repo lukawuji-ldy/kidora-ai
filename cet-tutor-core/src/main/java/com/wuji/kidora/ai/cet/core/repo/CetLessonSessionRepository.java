@@ -73,6 +73,33 @@ public class CetLessonSessionRepository {
                 """, status.name(), planId, Timestamp.from(Instant.now()), lessonSessionId);
     }
 
+    /**
+     * 更新会话扩展 JSON。
+     *
+     * @param lessonSessionId 会话
+     * @param extraJson       JSON 文本
+     */
+    public void updateExtraJson(String lessonSessionId, String extraJson) {
+        jdbcTemplate.update("""
+                UPDATE cet_lesson_session SET extra_json = ?::jsonb, update_time = ?
+                WHERE lesson_session_id = ?
+                """, extraJson, Timestamp.from(Instant.now()), lessonSessionId);
+    }
+
+    /**
+     * 读取会话扩展 JSON。
+     *
+     * @param lessonSessionId 会话
+     * @return JSON 文本
+     */
+    public Optional<String> findExtraJson(String lessonSessionId) {
+        List<String> rows = jdbcTemplate.query("""
+                SELECT extra_json::text FROM cet_lesson_session
+                WHERE lesson_session_id = ? AND deleted = FALSE
+                """, (rs, i) -> rs.getString(1), lessonSessionId);
+        return rows.isEmpty() || rows.get(0) == null ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
     public void markEnded(String lessonSessionId, LessonStatus status) {
         Timestamp now = Timestamp.from(Instant.now());
         jdbcTemplate.update("""

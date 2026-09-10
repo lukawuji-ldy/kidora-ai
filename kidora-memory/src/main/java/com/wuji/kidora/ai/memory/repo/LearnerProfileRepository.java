@@ -3,21 +3,24 @@ package com.wuji.kidora.ai.memory.repo;
 import com.wuji.kidora.ai.common.exception.ErrorCode;
 import com.wuji.kidora.ai.common.exception.KidoraException;
 import com.wuji.kidora.ai.memory.model.LearnerProfile;
+import com.wuji.kidora.ai.memory.port.LearnerProfilePort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * learner_profile 读仓储 + 归属校验。
+ * learner_profile 读仓储 + 归属校验 + extra_json 写入。
  *
  * @author liudy
  */
 @Repository
-public class LearnerProfileRepository {
+public class LearnerProfileRepository implements LearnerProfilePort {
 
     private static final RowMapper<LearnerProfile> MAPPER = (rs, rowNum) -> new LearnerProfile(
             rs.getString("learner_id"),
@@ -26,7 +29,8 @@ public class LearnerProfileRepository {
             rs.getString("age_band"),
             rs.getString("cefr_level"),
             rs.getString("preferred_persona"),
-            rs.getString("status")
+            rs.getString("status"),
+            rs.getString("extra_json")
     );
 
     private final JdbcTemplate jdbcTemplate;
@@ -35,16 +39,32 @@ public class LearnerProfileRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    @Override
     public Optional<LearnerProfile> findByLearnerId(String learnerId) {
         if (!StringUtils.hasText(learnerId)) {
             return Optional.empty();
         }
         List<LearnerProfile> rows = jdbcTemplate.query("""
-                SELECT learner_id, user_id, display_name, age_band, cefr_level, preferred_persona, status
+                SELECT learner_id, user_id, display_name, age_band, cefr_level, preferred_persona, status,
+                       extra_json::text AS extra_json
                 FROM learner_profile
                 WHERE learner_id = ? AND deleted = FALSE
                 """, MAPPER, learnerId.trim());
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    @Override
+    public void updateExtraJson(String learnerId, String extraJson) {
+        if (!StringUtils.hasText(learnerId)) {
+            throw new KidoraException(ErrorCode.BAD_REQUEST, "learnerId 不能为空");
+        }
+        int n = jdbcTemplate.update("""
+                UPDATE learner_profile SET extra_json = ?::jsonb, update_time = ?
+                WHERE learner_id = ? AND deleted = FALSE
+                """, extraJson, Timestamp.from(Instant.now()), learnerId.trim());
+        if (n == 0) {
+            throw new KidoraException(ErrorCode.NOT_FOUND, "学习者不存在");
+        }
     }
 
     /**
@@ -68,7 +88,8 @@ public class LearnerProfileRepository {
             return List.of();
         }
         return jdbcTemplate.query("""
-                SELECT learner_id, user_id, display_name, age_band, cefr_level, preferred_persona, status
+                SELECT learner_id, user_id, display_name, age_band, cefr_level, preferred_persona, status,
+                       extra_json::text AS extra_json
                 FROM learner_profile
                 WHERE user_id = ? AND deleted = FALSE AND status = 'ACTIVE'
                 ORDER BY create_time ASC

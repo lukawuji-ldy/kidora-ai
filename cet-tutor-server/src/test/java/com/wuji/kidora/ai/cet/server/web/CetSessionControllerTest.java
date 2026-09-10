@@ -24,5 +24,8 @@ class CetSessionControllerTest {
 
         ServerSentEvent<String> pron = CetSessionController.toSse(CetStreamEvent.pronunciation("{}"));
         assertEquals("pronunciation", pron.event());
+
+        ServerSentEvent<String> plan = CetSessionController.toSse(CetStreamEvent.planUpdated("{\"decision\":\"replan\"}"));
+        assertEquals("plan.updated", plan.event());
     }
 }

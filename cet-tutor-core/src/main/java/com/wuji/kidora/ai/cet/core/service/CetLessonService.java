@@ -1,30 +1,35 @@
 package com.wuji.kidora.ai.cet.core.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.wuji.kidora.ai.agent.model.ModelRouter;
 import com.wuji.kidora.ai.cet.core.domain.LessonSession;
 import com.wuji.kidora.ai.cet.core.domain.LessonStateMachine;
 import com.wuji.kidora.ai.cet.core.domain.LessonStatus;
 import com.wuji.kidora.ai.cet.core.eval.SessionEvaluator;
 import com.wuji.kidora.ai.cet.core.planner.LessonPlanner;
+import com.wuji.kidora.ai.cet.core.planner.LessonReplanner;
 import com.wuji.kidora.ai.cet.core.repo.CetAssessmentRepository;
 import com.wuji.kidora.ai.cet.core.repo.CetLessonSessionRepository;
 import com.wuji.kidora.ai.cet.core.repo.CetSafetyEventRepository;
 import com.wuji.kidora.ai.cet.core.repo.CetSessionReportRepository;
 import com.wuji.kidora.ai.cet.core.repo.CetTrainingPlanRepository;
+import com.wuji.kidora.ai.cet.core.repo.CetTrainingPlanRevisionRepository;
 import com.wuji.kidora.ai.cet.core.repo.CetTutorTurnRepository;
 import com.wuji.kidora.ai.cet.core.safety.SafetyAction;
 import com.wuji.kidora.ai.cet.core.safety.SafetyDecision;
 import com.wuji.kidora.ai.cet.core.safety.SafetyGuard;
-import com.wuji.kidora.ai.cet.core.tutor.TutorLoop;
 import com.wuji.kidora.ai.cet.core.speech.CetStreamEvent;
 import com.wuji.kidora.ai.cet.core.speech.SpeechToolPort;
 import com.wuji.kidora.ai.cet.core.speech.TurnInput;
+import com.wuji.kidora.ai.cet.core.tutor.TutorLoop;
 import com.wuji.kidora.ai.common.exception.ErrorCode;
 import com.wuji.kidora.ai.common.exception.KidoraException;
 import com.wuji.kidora.ai.common.util.IdGenerator;
 import com.wuji.kidora.ai.memory.model.LearnerProfile;
 import com.wuji.kidora.ai.memory.repo.LearnerProfileRepository;
+import com.wuji.kidora.ai.memory.service.LearnerMemoryService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -36,7 +41,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * CET 课时编排门面（开课 / 小循环 / 结课）。
+ * CET 课时编排门面（开课 / 小循环 / 阶段 Re-plan / 结课）。
  *
  * @author liudy
  */
@@ -49,41 +54,50 @@ public class CetLessonService {
     private final LearnerProfileRepository learnerProfileRepository;
     private final CetLessonSessionRepository lessonSessionRepository;
     private final CetTrainingPlanRepository trainingPlanRepository;
+    private final CetTrainingPlanRevisionRepository planRevisionRepository;
     private final CetTutorTurnRepository tutorTurnRepository;
     private final CetAssessmentRepository assessmentRepository;
     private final CetSessionReportRepository sessionReportRepository;
     private final CetSafetyEventRepository safetyEventRepository;
     private final SafetyGuard safetyGuard;
     private final LessonPlanner lessonPlanner;
+    private final LessonReplanner lessonReplanner;
     private final TutorLoop tutorLoop;
     private final SessionEvaluator sessionEvaluator;
+    private final LearnerMemoryService learnerMemoryService;
     private final ObjectMapper objectMapper;
     private final ObjectProvider<SpeechToolPort> speechToolPort;
 
     public CetLessonService(LearnerProfileRepository learnerProfileRepository,
                             CetLessonSessionRepository lessonSessionRepository,
                             CetTrainingPlanRepository trainingPlanRepository,
+                            CetTrainingPlanRevisionRepository planRevisionRepository,
                             CetTutorTurnRepository tutorTurnRepository,
                             CetAssessmentRepository assessmentRepository,
                             CetSessionReportRepository sessionReportRepository,
                             CetSafetyEventRepository safetyEventRepository,
                             SafetyGuard safetyGuard,
                             LessonPlanner lessonPlanner,
+                            LessonReplanner lessonReplanner,
                             TutorLoop tutorLoop,
                             SessionEvaluator sessionEvaluator,
+                            LearnerMemoryService learnerMemoryService,
                             ObjectMapper objectMapper,
                             ObjectProvider<SpeechToolPort> speechToolPort) {
         this.learnerProfileRepository = learnerProfileRepository;
         this.lessonSessionRepository = lessonSessionRepository;
         this.trainingPlanRepository = trainingPlanRepository;
+        this.planRevisionRepository = planRevisionRepository;
         this.tutorTurnRepository = tutorTurnRepository;
         this.assessmentRepository = assessmentRepository;
         this.sessionReportRepository = sessionReportRepository;
         this.safetyEventRepository = safetyEventRepository;
         this.safetyGuard = safetyGuard;
         this.lessonPlanner = lessonPlanner;
+        this.lessonReplanner = lessonReplanner;
         this.tutorLoop = tutorLoop;
         this.sessionEvaluator = sessionEvaluator;
+        this.learnerMemoryService = learnerMemoryService;
         this.objectMapper = objectMapper;
         this.speechToolPort = speechToolPort;
     }
@@ -112,6 +126,7 @@ public class CetLessonService {
 
         LessonStateMachine.assertTransition(LessonStatus.PLANNING, LessonStatus.PRACTICING);
         lessonSessionRepository.updateStatusAndPlan(session.lessonSessionId(), LessonStatus.PRACTICING, planId);
+        lessonSessionRepository.updateExtraJson(session.lessonSessionId(), "{\"lastStageEvalTurn\":0}");
 
         return new OpenResult(session.lessonSessionId(), LessonStatus.PRACTICING.name(), plan.childSummary(), planId);
     }
@@ -165,19 +180,165 @@ public class CetLessonService {
 
         Flux<CetStreamEvent> deltas = TutorLoop.chunkForSse(finalText).map(CetStreamEvent::delta);
         SpeechToolPort port = speechToolPort.getIfAvailable();
-        if (port == null) {
-            return deltas;
-        }
-        return deltas.concatWith(Flux.defer(() -> Flux.fromIterable(
+        Flux<CetStreamEvent> body = port == null
+                ? deltas
+                : deltas.concatWith(Flux.defer(() -> Flux.fromIterable(
                 buildSpeechExtras(port, finalText, rawAudio, locale, referenceText))));
+
+        return body.concatWith(Flux.defer(() -> Flux.fromIterable(
+                maybeStageEvaluate(userId, lessonSessionId, turnIndex, planJson, ctx))));
+    }
+
+    /**
+     * 达 targetTurns 时触发阶段评测；仅在此路径调用 Re-Planner（非每轮）。
+     *
+     * @param userId          用户
+     * @param lessonSessionId 会话
+     * @param turnIndex       当前轮次
+     * @param planJson        当前计划
+     * @param ctx             上下文
+     * @return 附加 SSE 事件
+     */
+    List<CetStreamEvent> maybeStageEvaluate(String userId, String lessonSessionId, int turnIndex,
+                                            String planJson, ModelRouter.CallContext ctx) {
+        List<CetStreamEvent> events = new ArrayList<>();
+        try {
+            LessonSession session = requireOwnedSession(userId, lessonSessionId);
+            int target = SessionEvaluator.resolveTargetTurns(objectMapper, planJson);
+            int lastEval = readLastStageEvalTurn(lessonSessionId);
+            if (turnIndex - lastEval < target) {
+                return events;
+            }
+            LessonStateMachine.assertTransition(LessonStatus.PRACTICING, LessonStatus.EVALUATING);
+            lessonSessionRepository.updateStatus(lessonSessionId, LessonStatus.EVALUATING);
+
+            List<CetTutorTurnRepository.TurnRow> turns = tutorTurnRepository.listAll(lessonSessionId);
+            SessionEvaluator.EvalResult eval = sessionEvaluator.evaluateStage(
+                    session.topic(), session.cefrLevel(), planJson, turns, ctx);
+            writeLastStageEvalTurn(lessonSessionId, turnIndex);
+
+            if (eval.decision() == SessionEvaluator.Decision.REPLAN) {
+                LessonStateMachine.assertTransition(LessonStatus.EVALUATING, LessonStatus.REPLANNING);
+                lessonSessionRepository.updateStatus(lessonSessionId, LessonStatus.REPLANNING);
+                LessonReplanner.ReplanResult replan = lessonReplanner.replan(planJson, eval, ctx);
+                trainingPlanRepository.supersedeActiveForSession(lessonSessionId);
+                int version = trainingPlanRepository.findMaxVersion(lessonSessionId) + 1;
+                String newPlanId = trainingPlanRepository.insertVersion(
+                        lessonSessionId, session.learnerId(), replan.planJson(), version);
+                planRevisionRepository.insert(lessonSessionId, newPlanId, version,
+                        replan.planJson(), eval.assessmentJson(),
+                        eval.focus() == null || eval.focus().isEmpty()
+                                ? "stage_replan" : String.join(",", eval.focus()));
+                LessonStateMachine.assertTransition(LessonStatus.REPLANNING, LessonStatus.PRACTICING);
+                lessonSessionRepository.updateStatusAndPlan(lessonSessionId, LessonStatus.PRACTICING, newPlanId);
+                events.add(CetStreamEvent.planUpdated(
+                        "{\"planId\":\"" + jsonEscape(newPlanId)
+                                + "\",\"version\":" + version
+                                + ",\"childSummary\":\"" + jsonEscape(nullToEmpty(replan.childSummary()))
+                                + "\",\"decision\":\"replan\"}"));
+            } else {
+                LessonStateMachine.assertTransition(LessonStatus.EVALUATING, LessonStatus.PRACTICING);
+                lessonSessionRepository.updateStatus(lessonSessionId, LessonStatus.PRACTICING);
+                if (eval.decision() == SessionEvaluator.Decision.COMPLETE) {
+                    events.add(CetStreamEvent.planUpdated(
+                            "{\"decision\":\"complete\",\"childSummary\":\""
+                                    + jsonEscape(nullToEmpty(eval.childSummary())) + "\"}"));
+                }
+            }
+        } catch (Exception ignored) {
+            try {
+                lessonSessionRepository.updateStatus(lessonSessionId, LessonStatus.PRACTICING);
+            } catch (Exception ignored2) {
+                // best-effort restore
+            }
+        }
+        return events;
+    }
+
+    public CompleteResult complete(String userId, String lessonSessionId) {
+        LessonSession session = requireOwnedSession(userId, lessonSessionId);
+        if (session.status() != LessonStatus.PRACTICING && session.status() != LessonStatus.EVALUATING) {
+            throw new KidoraException(ErrorCode.CET_INVALID_STATE, "当前状态不可结课: " + session.status());
+        }
+        if (session.status() == LessonStatus.PRACTICING) {
+            LessonStateMachine.assertTransition(LessonStatus.PRACTICING, LessonStatus.EVALUATING);
+            lessonSessionRepository.updateStatus(lessonSessionId, LessonStatus.EVALUATING);
+        }
+        ModelRouter.CallContext ctx = baseCtx(userId, session.learnerId(), lessonSessionId);
+        List<CetTutorTurnRepository.TurnRow> turns = tutorTurnRepository.listAll(lessonSessionId);
+        SessionEvaluator.EvalResult eval = sessionEvaluator.evaluate(session.topic(), session.cefrLevel(), turns, ctx);
+        assessmentRepository.insertSession(lessonSessionId, eval.assessmentJson());
+        sessionReportRepository.upsert(lessonSessionId, session.learnerId(), eval.childSummary(), eval.assessmentJson());
+        learnerMemoryService.onSessionCompleted(
+                session.learnerId(), lessonSessionId, session.topic(), eval.assessmentJson());
+        LessonStateMachine.assertTransition(LessonStatus.EVALUATING, LessonStatus.COMPLETED);
+        lessonSessionRepository.markEnded(lessonSessionId, LessonStatus.COMPLETED);
+        return new CompleteResult(lessonSessionId, LessonStatus.COMPLETED.name(), eval.childSummary(), eval.assessmentJson());
+    }
+
+    public ReportResult getReport(String userId, String lessonSessionId) {
+        requireOwnedSession(userId, lessonSessionId);
+        CetSessionReportRepository.ReportRow report = sessionReportRepository.findBySession(lessonSessionId)
+                .orElseThrow(() -> new KidoraException(ErrorCode.NOT_FOUND, "报告不存在，请先结课"));
+        return new ReportResult(report.childSummary(), report.reportJson());
+    }
+
+    private int readLastStageEvalTurn(String lessonSessionId) {
+        return lessonSessionRepository.findExtraJson(lessonSessionId).map(json -> {
+            try {
+                return objectMapper.readTree(json).path("lastStageEvalTurn").asInt(0);
+            } catch (Exception e) {
+                return 0;
+            }
+        }).orElse(0);
+    }
+
+    private void writeLastStageEvalTurn(String lessonSessionId, int turnIndex) {
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            Optional<String> existing = lessonSessionRepository.findExtraJson(lessonSessionId);
+            if (existing.isPresent()) {
+                JsonNode prev = objectMapper.readTree(existing.get());
+                if (prev.isObject()) {
+                    node = (ObjectNode) prev.deepCopy();
+                }
+            }
+            node.put("lastStageEvalTurn", turnIndex);
+            lessonSessionRepository.updateExtraJson(lessonSessionId, node.toString());
+        } catch (Exception ignored) {
+            lessonSessionRepository.updateExtraJson(lessonSessionId,
+                    "{\"lastStageEvalTurn\":" + turnIndex + "}");
+        }
+    }
+
+    private LessonSession requireOwnedSession(String userId, String lessonSessionId) {
+        LessonSession session = lessonSessionRepository.findById(lessonSessionId)
+                .orElseThrow(() -> new KidoraException(ErrorCode.NOT_FOUND, "会话不存在"));
+        assertSessionOwned(userId, session.userId());
+        return session;
+    }
+
+    /**
+     * 会话归属校验（可单测）。
+     */
+    static void assertSessionOwned(String userId, String sessionUserId) {
+        if (userId == null || !userId.equals(sessionUserId)) {
+            throw new KidoraException(ErrorCode.FORBIDDEN, "无权访问该会话");
+        }
+    }
+
+    /**
+     * SOFT 输入闸门：返回儿童友好 redirect；非 SOFT 返回 null。
+     */
+    static String softInputRedirectOrEmpty(SafetyDecision in) {
+        if (in != null && in.isSoftBlock()) {
+            return SOFT_INPUT_REDIRECT;
+        }
+        return null;
     }
 
     /**
      * 解析儿童文本：优先 ASR，否则 text。
-     *
-     * @param input 输入
-     * @param port  语音端口（可空）
-     * @return 文本
      */
     static String resolveChildText(TurnInput input, SpeechToolPort port) {
         if (input != null && StringUtils.hasText(input.audioBase64())) {
@@ -212,89 +373,33 @@ public class CetLessonService {
                         + "\",\"provider\":\"" + jsonEscape(nullToEmpty(tts.provider())) + "\"}")));
         if (StringUtils.hasText(rawAudio) && StringUtils.hasText(referenceText)) {
             port.score(rawAudio, referenceText, locale).ifPresent(p -> extras.add(CetStreamEvent.pronunciation(
-                    "{\"overall\":" + p.overall() + ",\"accuracy\":" + p.accuracy()
-                            + ",\"fluency\":" + p.fluency() + ",\"completeness\":" + p.completeness()
+                    "{\"overall\":" + p.overall()
+                            + ",\"accuracy\":" + p.accuracy()
+                            + ",\"fluency\":" + p.fluency()
+                            + ",\"completeness\":" + p.completeness()
                             + ",\"provider\":\"" + jsonEscape(nullToEmpty(p.provider())) + "\"}")));
         }
         return extras;
     }
 
-    private static String nullToEmpty(String s) {
-        return s == null ? "" : s;
-    }
-
-    private static String jsonEscape(String raw) {
-        return raw.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
     /**
-     * 输出闸门：HARD/SOFT 替换为儿童友好句；REWRITE 用改写文。
+     * 输出闸门（可单测）。
      *
-     * @author liudy
+     * @param out      决策
+     * @param rawTutor 原文
+     * @return 安全文本
      */
     static String applyOutputGate(SafetyDecision out, String rawTutor) {
-        if (out == null) {
+        if (out == null || out.action() == SafetyAction.ALLOW) {
             return rawTutor;
         }
-        if (out.isHardBlock() || out.isSoftBlock()) {
+        if (out.action() == SafetyAction.HARD_BLOCK || out.action() == SafetyAction.SOFT_BLOCK) {
             return "Great try! Let's practice a safer sentence together.";
         }
         if (out.action() == SafetyAction.REWRITE && StringUtils.hasText(out.rewriteText())) {
             return out.rewriteText();
         }
         return rawTutor;
-    }
-
-    public CompleteResult complete(String userId, String lessonSessionId) {
-        LessonSession session = requireOwnedSession(userId, lessonSessionId);
-        if (session.status() != LessonStatus.PRACTICING && session.status() != LessonStatus.EVALUATING) {
-            throw new KidoraException(ErrorCode.CET_INVALID_STATE, "当前状态不可结课: " + session.status());
-        }
-        if (session.status() == LessonStatus.PRACTICING) {
-            LessonStateMachine.assertTransition(LessonStatus.PRACTICING, LessonStatus.EVALUATING);
-            lessonSessionRepository.updateStatus(lessonSessionId, LessonStatus.EVALUATING);
-        }
-        ModelRouter.CallContext ctx = baseCtx(userId, session.learnerId(), lessonSessionId);
-        List<CetTutorTurnRepository.TurnRow> turns = tutorTurnRepository.listAll(lessonSessionId);
-        SessionEvaluator.EvalResult eval = sessionEvaluator.evaluate(session.topic(), session.cefrLevel(), turns, ctx);
-        assessmentRepository.insertSession(lessonSessionId, eval.assessmentJson());
-        sessionReportRepository.upsert(lessonSessionId, session.learnerId(), eval.childSummary(), eval.assessmentJson());
-        LessonStateMachine.assertTransition(LessonStatus.EVALUATING, LessonStatus.COMPLETED);
-        lessonSessionRepository.markEnded(lessonSessionId, LessonStatus.COMPLETED);
-        return new CompleteResult(lessonSessionId, LessonStatus.COMPLETED.name(), eval.childSummary(), eval.assessmentJson());
-    }
-
-    public ReportResult getReport(String userId, String lessonSessionId) {
-        requireOwnedSession(userId, lessonSessionId);
-        CetSessionReportRepository.ReportRow report = sessionReportRepository.findBySession(lessonSessionId)
-                .orElseThrow(() -> new KidoraException(ErrorCode.NOT_FOUND, "报告不存在，请先结课"));
-        return new ReportResult(report.childSummary(), report.reportJson());
-    }
-
-    private LessonSession requireOwnedSession(String userId, String lessonSessionId) {
-        LessonSession session = lessonSessionRepository.findById(lessonSessionId)
-                .orElseThrow(() -> new KidoraException(ErrorCode.NOT_FOUND, "会话不存在"));
-        assertSessionOwned(userId, session.userId());
-        return session;
-    }
-
-    /**
-     * 会话归属校验（可单测）。
-     */
-    static void assertSessionOwned(String userId, String sessionUserId) {
-        if (userId == null || !userId.equals(sessionUserId)) {
-            throw new KidoraException(ErrorCode.FORBIDDEN, "无权访问该会话");
-        }
-    }
-
-    /**
-     * SOFT 输入闸门：返回儿童友好 redirect；非 SOFT 返回 null。
-     */
-    static String softInputRedirectOrEmpty(SafetyDecision in) {
-        if (in != null && in.isSoftBlock()) {
-            return SOFT_INPUT_REDIRECT;
-        }
-        return null;
     }
 
     private void persistSafety(String lessonSessionId, String turnId, String learnerId, String userId,
@@ -330,6 +435,14 @@ public class CetLessonService {
                 sessionId,
                 "CET"
         );
+    }
+
+    private static String jsonEscape(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
     }
 
     public record OpenResult(String sessionId, String status, String planSummary, String planId) {

@@ -23,7 +23,8 @@ public final class LessonStateMachine {
         EDGES.put(LessonStatus.PRACTICING, EnumSet.of(
                 LessonStatus.EVALUATING, LessonStatus.ABORTED, LessonStatus.SAFETY_BLOCKED, LessonStatus.PRACTICING));
         EDGES.put(LessonStatus.EVALUATING, EnumSet.of(
-                LessonStatus.COMPLETED, LessonStatus.REPLANNING, LessonStatus.ABORTED, LessonStatus.SAFETY_BLOCKED));
+                LessonStatus.COMPLETED, LessonStatus.REPLANNING, LessonStatus.PRACTICING,
+                LessonStatus.ABORTED, LessonStatus.SAFETY_BLOCKED));
         EDGES.put(LessonStatus.REPLANNING, EnumSet.of(LessonStatus.PRACTICING, LessonStatus.ABORTED, LessonStatus.SAFETY_BLOCKED));
         EDGES.put(LessonStatus.COMPLETED, EnumSet.noneOf(LessonStatus.class));
         EDGES.put(LessonStatus.ABORTED, EnumSet.noneOf(LessonStatus.class));

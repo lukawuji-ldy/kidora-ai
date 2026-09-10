@@ -31,3 +31,5 @@
 \ir 18_mcp_tool_binding.sql
 \ir 19_speech_vendor_config.sql
 \ir 20_speech_route.sql
+\ir 21_cet_training_plan_revision.sql
+\ir 22_learner_semantic_memory.sql

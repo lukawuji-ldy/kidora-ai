@@ -8,10 +8,14 @@ import com.wuji.kidora.ai.agent.model.ModelRouter;
 import com.wuji.kidora.ai.agent.prompt.PromptTemplateService;
 import com.wuji.kidora.ai.cet.core.safety.SafetyGuard;
 import com.wuji.kidora.ai.memory.model.LearnerProfile;
+import com.wuji.kidora.ai.memory.port.MemoryWritePort;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 开课 Planner（仅大循环；禁止在 Tutor 小循环调用）。
@@ -24,30 +28,37 @@ public class LessonPlanner {
     private final PromptTemplateService promptTemplateService;
     private final ModelRouter modelRouter;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<MemoryWritePort> memoryWritePort;
 
     public LessonPlanner(PromptTemplateService promptTemplateService,
                          ModelRouter modelRouter,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper,
+                         ObjectProvider<MemoryWritePort> memoryWritePort) {
         this.promptTemplateService = promptTemplateService;
         this.modelRouter = modelRouter;
         this.objectMapper = objectMapper;
+        this.memoryWritePort = memoryWritePort;
     }
 
     public PlanResult plan(LearnerProfile profile, String topic, String personaId, ModelRouter.CallContext ctx) {
         String cefr = StringUtils.hasText(profile.cefrLevel()) ? profile.cefrLevel() : "A1";
         String persona = StringUtils.hasText(personaId) ? personaId
                 : (StringUtils.hasText(profile.preferredPersona()) ? profile.preferredPersona() : "emma");
+        String profileExtra = truncate(profile.extraJson(), 800);
+        String semanticHits = loadSemanticHits(profile.learnerId());
         Map<String, String> vars = Map.of(
-                "displayName", profile.displayName(),
+                "displayName", nullToEmpty(profile.displayName()),
                 "ageBand", nullToEmpty(profile.ageBand()),
                 "cefr", cefr,
                 "personaId", persona,
-                "topic", topic
+                "topic", nullToEmpty(topic),
+                "profileExtra", profileExtra,
+                "semanticHits", semanticHits
         );
         String system = promptTemplateService.loadAndRender("cet.planner.system", vars,
-                "Output JSON training plan for child English.");
+                "Output JSON training plan for child English. Consider profileExtra and semanticHits.");
         String user = promptTemplateService.loadAndRender("cet.planner.user", vars,
-                "Topic={{topic}} CEFR={{cefr}}");
+                "Topic={{topic}} CEFR={{cefr}} profile={{profileExtra}} memory={{semanticHits}}");
         ModelRouter.CallContext planCtx = new ModelRouter.CallContext(
                 ctx.traceId(), ctx.sessionId(), ctx.messageId(), ctx.userId(), ctx.learnerId(),
                 "CET", ctx.bizRefId(), "CET_PLAN");
@@ -61,6 +72,26 @@ public class LessonPlanner {
             String fallback = defaultPlanJson(topic, persona, cefr);
             return new PlanResult(fallback, "我们来练习「" + topic + "」吧！", persona, cefr);
         }
+    }
+
+    private String loadSemanticHits(String learnerId) {
+        MemoryWritePort port = memoryWritePort.getIfAvailable();
+        if (port == null || !StringUtils.hasText(learnerId)) {
+            return "";
+        }
+        List<String> hits = port.listRecentSemantic(learnerId, 5);
+        if (hits == null || hits.isEmpty()) {
+            return "";
+        }
+        return hits.stream().map(s -> truncate(s, 120)).collect(Collectors.joining(" | "));
+    }
+
+    private static String truncate(String s, int max) {
+        if (!StringUtils.hasText(s)) {
+            return "";
+        }
+        String t = s.trim();
+        return t.length() <= max ? t : t.substring(0, max);
     }
 
     private String defaultPlanJson(String topic, String persona, String cefr) {
