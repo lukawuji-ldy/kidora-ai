@@ -45,6 +45,10 @@ flowchart LR
 
 **唯一规则：外教在本轮最终文本里点名了本课已发布道具，就展示它。**
 
+> **已升级（2026-09-14）：** §3.1 的升级路径已落地，主图改由外教自己声明。当前口径见
+> [2026-09-14-cet-prop-declared-lemma-design.md](2026-09-14-cet-prop-declared-lemma-design.md)；
+> 本节描述的点名匹配从「唯一规则」降级为「声明缺失时的兜底」，匹配细节仍然有效。
+
 - 匹配用 `PropVocabulary` 做别名归一，别名全部来自 `cet_prop_asset.aliases_json`；英文复数由通用构词规则还原（`cats→cat`、`boxes→box`、`babies→baby`），不需要逐个入库。
 - 英文按词边界匹配，避免 `cat` 命中 `caterpillar`；中文按子串匹配。
 - 按**字幕出现位置**排序，最多 3 张，`activeLemma` = 第一个（最早被点名的）。
@@ -56,7 +60,7 @@ flowchart LR
 
 **取舍：** 外教若说裸问句 `Look! What is this?`（不带具体词），屏幕上不会出图。这是有意为之——代价换掉的是一整套「教学句式正则」，那套东西无法覆盖模型的自由文本，且每次换素材/换话术都要跟着改。当前用提示词硬要求点名来兜底（V22/V23 本来就禁止裸 `Look! What is this?`，这里只是把它从建议变成硬要求）。
 
-**若实际跑下来模型仍会漏词**，升级方向是让模型显式告诉我们要展示什么，**而不是把正则加回前端或后端**：在 Tutor 结构化输出里增加 `propLemma` 字段，`PropStageDirector` 优先采信该字段、点名匹配作为兜底。这条路的成本是改 prompt 与输出解析，收益是判定不再依赖自然语言匹配。
+**若实际跑下来模型仍会漏词**，升级方向是让模型显式告诉我们要展示什么，**而不是把正则加回前端或后端**：在 Tutor 结构化输出里增加 `propLemma` 字段，`PropStageDirector` 优先采信该字段、点名匹配作为兜底。这条路的成本是改 prompt 与输出解析，收益是判定不再依赖自然语言匹配。 —— **已实施**，见上方提示。
 
 **明确不做：** 任何形式的字幕句式正则、按颜色/主题猜实体、"教学态但未命中时回退第一张图"。最后这条尤其危险——它会让屏幕上出现外教根本没提到的东西。
 
@@ -96,10 +100,10 @@ JWT，只读。返回 `attribution_required = TRUE` 的素材署名信息（`lem
 | 类型 | 位置 | 职责 |
 |---|---|---|
 | `PropVocabulary` | `cet-tutor-core/.../props` | DB 驱动别名词表 + TTL 缓存（`kidora.cet.props.vocab-ttl-seconds`，默认 600s）；`normalize(token)`、`surfaceFormsOf(lemma)`；重载失败沿用旧快照 |
-| `PropStageDirector` | 同上 | 按外教文本 + 可用资产判定 `PropStageView{layout, activeLemma, assets}` |
+| `PropStageDirector` | 同上 | 按外教声明（优先）+ 文本点名（兜底）+ 可用资产判定 `PropStageView{layout, activeLemma, assets}` |
 | `SessionPropContext` | 同上 | `sessionId → List<PropAssetView>` 会话级缓存（TTL / 容量上限），结课 / 中止 / 删除时 evict |
 | `PropAssetResolver` | 同上 | hint → 资产；硬编码 `ALIAS_TO_LEMMA` / `PROP_STOP_WORDS` 已删除，停用词统一走 `PlanLearningHints.isPropStopWord` |
-| `PropFileLocator` | `cet-tutor-server/.../props` | `storage_path` → 磁盘路径（禁止穿越）+ MIME 推断 |
+| `PropFileLocator` | `cet-tutor-server/.../props` | `storage_path` → 磁盘路径（禁止穿越）+ MIME 推断；相对 `local-dir` 兼容「从模块启动」与「从仓库根启动」两种工作目录 |
 | `PropLibraryIntegrityChecker` | 同上 | 启动时体检「库里有行但磁盘缺文件」，只 WARN 不 fail-fast |
 
 前端 `lessonProps.ts` 只剩类型 + `toPropStageView(payload)` + `goalStepFromTurnCount`；`resolvePropStage` / `isTeachingCaption` / `resolveSingularPetStem` / `LEMMA_ALIASES` / `THEME_STEMS` 全部删除，`lessonProps.selftest.ts` 的场景迁为后端 `PropStageDirectorTest`。

@@ -16,16 +16,21 @@ export default function HomePage() {
     <main className="shell">
       <div className="topbar">
         <p className="mini-brand">Kidora</p>
-        <button
-          className="btn ghost"
-          type="button"
-          onClick={() => {
-            clearToken();
-            router.push("/login");
-          }}
-        >
-          退出
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <Link className="btn ghost" href="/settings">
+            个人中心
+          </Link>
+          <button
+            className="btn ghost"
+            type="button"
+            onClick={() => {
+              clearToken();
+              router.push("/login");
+            }}
+          >
+            退出
+          </button>
+        </div>
       </div>
       <h1 className="brand">
         Kidora<span>.</span>

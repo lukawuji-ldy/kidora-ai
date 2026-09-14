@@ -118,8 +118,9 @@ POST /api/cet/sessions/{id}/stream
       soft redirect：asr.transcript? → message.delta → turn.timing（无 turn.prop）；
       硬拦：asr.transcript? → safety.block + error；
       turn.prop：本轮教具舞台 JSON `{layout,activeLemma,assets[]}`，由 PropStageDirector
-      按外教最终文本判定；未点名任何已发布道具时发 personaFocus；判定异常只 WARN 并退化为
-      personaFocus，不中断主流。前端只渲染，不再从字幕推断；
+      优先采信外教输出末尾的 `[[PROP:词]]` 声明（该标记在闸门/落库/SSE/TTS 之前已剥离），
+      声明缺失或不可用时退回按字幕点名顺序；两者都没有时发 personaFocus；判定异常只 WARN
+      并退化为 personaFocus，不中断主流。前端只渲染，不再从字幕推断；
       turn.timing：服务端分段耗时 JSON，落库 cet_tutor_turn.timing_json；儿童 UI 不展示；
       **ttsReadyMs 不含 scoreMs**；pronunciation 仍下发但不阻塞外教开播）
 ```
