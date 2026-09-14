@@ -1,0 +1,42 @@
+﻿diff --git a/docs/cet-tutor-design.md b/docs/cet-tutor-design.md
+index 4a8d6c5..48676ac 100644
+--- a/docs/cet-tutor-design.md
++++ b/docs/cet-tutor-design.md
+@@ -79,15 +79,23 @@
+ 5. 鏈揪鏍?鈫?Re-Planner 鏀硅鍒?鈫?鍥?Practice
+ 6. 杈炬爣 鈫?鎶ュ憡 + Memory
+ 
+ ### 4.2 灏忓惊鐜紙杞绾э級
+ 
+-1. 澶栨暀鎻愰棶 / 绀鸿寖锛圱TS 鍙€夛級
+-2. 瀛╁瓙鍥炵瓟锛堟枃鏈垨 ASR锛?-3. 杞婚噺鍒嗘瀽锛堣娉?鍏抽敭璇嶅懡涓紱鍙戦煶 Tool 鍦?MVP-2锛?-4. 榧撳姳寮忓弽棣?+ 涓嬩竴闂?-5. **涓?*璋冪敤瀹屾暣 Planner
++0. **寮€鍦?*锛氳繘鍏?PRACTICING 鍚庡鎴风 `opening=true` 鈫?澶栨暀鎵撴嫑鍛?+ 鐐归 + 涓€涓棶棰橈紙TTS 鍙€夛級锛沗child_text` 涓虹┖锛?*涓?*璋冪敤 Planner  
++1. 瀛╁瓙鍥炵瓟锛堟枃鏈垨 ASR锛? 
++2. 杞婚噺鍒嗘瀽锛堣娉?鍏抽敭璇嶅懡涓紱鍙戦煶 Tool 鍦?MVP-2锛? 
++3. 榧撳姳寮忓弽棣?+ 涓嬩竴闂紙瑙佺籂閿欏師鍒欙級  
++4. **涓?*璋冪敤瀹屾暣 Planner  
++
++**绾犻敊璇濇湳锛圥rompt 绾︽潫锛岄潪鐙珛 Agent锛夛細**
++
++- 榛樿**闅愬紡绾犻敊**锛氭纭嫳璇杩?+ 杩介棶锛屼笉鑰冭瘯鑵斻€佷笉鍒楀垎鏁般€? 
++- 鐩爣璇硶鍙嶅閿欐垨涓ラ噸褰卞搷鐞嗚В鏃?*鏄惧紡绾犻敊**锛氱煭榧撳姳 鈫?1锝? 鍙ヤ腑鏂囪瑙?鈫?鑻辨枃鍏抽敭鐐?姝ｇ‘鍙?鈫?璇峰瀛愬啀璇翠竴娆°€? 
++- **涓枃鑴氭墜鏋?*锛圓0/A1 榛樿锛涘瀛愪腑鏂囨眰鍔╋紱鏄惧紡绾犻敊锛夛細榧撳姳/璁茶В/寮曞/杩介棶鐢ㄤ腑鏂囷紝绀鸿寖鍙ヤ笌鍏抽敭鐐圭敤鑻辨枃锛汚0/A1 涓嬩竴闂粯璁や腑鏂囷紝A2+ 骞冲父浠嶄互鑻辨枃涓轰富銆? 
++- **姘旀场**鍙湪鑻辨枃鍚庝繚鐣?`(涓枃娉ㄩ噴)`锛?*绂佹**鏁存銆岃嫳鏂囦富鍙?+ 閫愬彞鎷彿缈昏瘧銆嶅爢鍙犮€? 
++- **TTS**锛坄speakableForTts`锛夛細鏈楄涓枃姝ｆ枃 + 鑻辨枃渚嬪彞锛屽幓鎺夊惈涓枃鐨勬嫭鍙锋敞閲娿€傚彂闊宠瘎娴嬩粛鐢ㄧ嫭绔嬭嫳鏂?`referenceText`锛屼笉鎶婃暣娈典腑鏂囪瑙ｅ綋璺熻绋裤€? 
+ ---
+ 
+ ## 5. 鍔ㄦ€?Re-Plan 绀轰緥
+ 
+diff --git a/docs/superpowers/specs/2026-09-10-cet-tutor-zh-scaffold-tts-design.md b/docs/superpowers/specs/2026-09-10-cet-tutor-zh-scaffold-tts-design.md
+index 35a5691..6398363 100644
+--- a/docs/superpowers/specs/2026-09-10-cet-tutor-zh-scaffold-tts-design.md
++++ b/docs/superpowers/specs/2026-09-10-cet-tutor-zh-scaffold-tts-design.md
+@@ -1,10 +1,10 @@
+ # CET 闄粌涓枃鑴氭墜鏋?+ TTS 鎷彿涓嶈璁捐
+ 
+ - **鏃ユ湡锛?* 2026-09-10
+ - **浠撳簱锛?* `kidora-ai`
+-- **鐘舵€侊細** Draft锛堝緟鐢ㄦ埛瀹￠槄瑙勬牸鍚?Accepted锛?+- **鐘舵€侊細** Implemented锛?026-09-10锛? - **鍏宠仈锛?* `cet.tutor.system` / `cet.tutor.opening.system`锛沗CetLessonService.speakableForTts`锛涙棦鏈?V9/V10 瀵硅瘽 UX 涓?TTS 杩佺Щ
+ 
+ ## 1. 鑳屾櫙涓庣洰鏍? 
+ 褰撳墠 Tutor 鍊惧悜銆岃嫳鏂囦富鍙?+ 鎷彿涓枃缈昏瘧銆嶏紝浣庨緞瀛╁瓙鍦ㄦ眰鍔?绾犻敊鏃堕槄璇昏礋鎷呭ぇ銆傜ず渚嬮棶棰樿疆锛?

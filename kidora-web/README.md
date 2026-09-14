@@ -13,7 +13,10 @@ npm run dev
 默认 `http://localhost:3000`。需先启动：
 
 - `kidora-agent-server` `:8080`（Auth / Chat / learners）
-- `cet-tutor-server` `:8082`（CET）
+- `cet-tutor-server` `:8082`（CET；语音需 `kidora.mcp.enabled=true`，默认已开）
+- `kidora-mcp-server` `:8081`（录音 / TTS / 发音；本地可用 `kidora.speech.mode=stub`）
+
+仅文本陪练可不启 MCP；点「录音」会报「语音输入需要启用 MCP 语音能力」或 ASR 失败。
 
 演示账号：`parent1` / `parent123`。
 

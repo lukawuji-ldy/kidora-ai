@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: cet-tutor-server
+  # 语音陪练 audioBase64（16k WAV）几秒即可超过 WebFlux 默认 256KB，否则 POST /stream 直接 HTTP 500
+  codec:
+    max-in-memory-size: 16MB
   datasource:
     url: jdbc:postgresql://127.0.0.1:5432/kidora_ai
     username: postgres
@@ -15,8 +18,10 @@ spring:
       base-url: https://api.openai.com
     mcp:
       client:
-        enabled: ${kidora.mcp.enabled:false}
-        request-timeout: 30s
+        # 默认开：Web 录音依赖 MCP ASR；无 mcp-server 时仍可启动（initialized=false）
+        enabled: ${kidora.mcp.enabled:true}
+        # 中英混合开场 TTS 音频偏大，30s 易 TimeoutException → 前端回退浏览器英文声
+        request-timeout: 90s
         # MCP Server 未起时不拖垮 CET 进程；工具在首次调用时发现
         initialized: false
   flyway:
@@ -31,12 +36,24 @@ kidora:
       issuer: kidora-ai
   model:
     primary-config-id: llm_primary
+    # 陪练 Tutor 小循环走更快 chat 模型（管理台 llm_chat_primary / deepseek-flash）
+    caller-config-ids:
+      CET_TUTOR: llm_chat_primary
     api-key-override: ${KIDORA_LLM_API_KEY:}
     timeout: 60s
   cet:
     blocking-pool-size: 16
+    props:
+      # 教具本地根目录；相对路径相对进程工作目录。导入见 scripts/props/README.md
+      local-dir: ${KIDORA_CET_PROPS_DIR:./data/cet-props}
+      # 道具别名词表缓存（来源 cet_prop_asset.aliases_json）
+      vocab-ttl-seconds: ${KIDORA_CET_PROPS_VOCAB_TTL:600}
+      # 会话级可用道具缓存：一节课只解析一次，供提示词闸门与 SSE 舞台事件共用
+      session-cache-ttl-seconds: ${KIDORA_CET_PROPS_SESSION_TTL:3600}
+      session-cache-max: ${KIDORA_CET_PROPS_SESSION_MAX:5000}
   mcp:
-    enabled: ${KIDORA_MCP_ENABLED:false}
+    # Web 语音闭环需 true + 本机 kidora-mcp-server:8081（stub 即可）
+    enabled: ${KIDORA_MCP_ENABLED:true}
     server-url: ${KIDORA_MCP_SERVER_URL:http://127.0.0.1:8081}
     sse-endpoint: /sse
     auth:

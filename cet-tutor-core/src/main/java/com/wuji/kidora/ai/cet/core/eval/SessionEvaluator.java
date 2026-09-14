@@ -138,7 +138,67 @@ public class SessionEvaluator {
                 ? null : node.path("insertStage").toString();
         ObjectNode normalized = (ObjectNode) node.deepCopy();
         normalized.put("decision", decision.name().toLowerCase(Locale.ROOT));
-        return new EvalResult(normalized.toString(), childSummary, decision, focus, pauseNewVocab, insertStage);
+        String parentSummary = node.path("parentSummary").asText("");
+        if (!StringUtils.hasText(parentSummary)) {
+            parentSummary = synthesizeParentSummary(normalized);
+            normalized.put("parentSummary", parentSummary);
+        }
+        return new EvalResult(normalized.toString(), childSummary, parentSummary, decision, focus, pauseNewVocab,
+                insertStage);
+    }
+
+    /**
+     * 由评测 JSON 拼家长可读小结（LLM 未返回 parentSummary 或老报告兜底）。
+     *
+     * @param node 评测节点
+     * @return 中文小结
+     */
+    public static String synthesizeParentSummary(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return "本节练习已完成。分数为 AI 参考，非正式测评。";
+        }
+        int grammar = node.path("grammar").asInt(0);
+        int vocabulary = node.path("vocabulary").asInt(0);
+        int fluency = node.path("fluency").asInt(0);
+        StringBuilder sb = new StringBuilder();
+        sb.append("本节参考表现：语法 ").append(grammar)
+                .append("、词汇 ").append(vocabulary)
+                .append("、流利度 ").append(fluency)
+                .append("（AI 参考分，非正式测评）。");
+        List<String> problems = new ArrayList<>();
+        if (node.path("problems").isArray()) {
+            for (JsonNode p : node.path("problems")) {
+                if (StringUtils.hasText(p.asText())) {
+                    problems.add(p.asText().trim());
+                }
+            }
+        }
+        if (!problems.isEmpty()) {
+            sb.append(" 需要留意的表达：");
+            sb.append(String.join("；", problems.stream().limit(3).toList()));
+            sb.append("。");
+        } else {
+            sb.append(" 本节未记录明显错句。");
+        }
+        List<String> focus = new ArrayList<>();
+        if (node.path("focus").isArray()) {
+            for (JsonNode f : node.path("focus")) {
+                if (StringUtils.hasText(f.asText())) {
+                    focus.add(f.asText().trim());
+                }
+            }
+        }
+        if (!focus.isEmpty()) {
+            sb.append(" 建议下次重点：").append(String.join("、", focus.stream().limit(3).toList())).append("。");
+        }
+        if (node.path("pauseNewVocab").asBoolean(false)) {
+            sb.append(" 建议暂缓引入新词，先巩固已学句型。");
+        }
+        String child = node.path("childSummary").asText("").trim();
+        if (StringUtils.hasText(child)) {
+            sb.append(" 孩子侧摘要：").append(child);
+        }
+        return sb.toString();
     }
 
     private EvalResult fallbackResult(Decision decision) {
@@ -160,7 +220,9 @@ public class SessionEvaluator {
             fallback.put("pauseNewVocab", true);
             fallback.put("childSummary", "我们换一种更简单的方式继续练！");
         }
-        return new EvalResult(fallback.toString(), fallback.path("childSummary").asText(),
+        String parentSummary = synthesizeParentSummary(fallback);
+        fallback.put("parentSummary", parentSummary);
+        return new EvalResult(fallback.toString(), fallback.path("childSummary").asText(), parentSummary,
                 decision, List.copyOf(focusList), fallback.path("pauseNewVocab").asBoolean(false), null);
     }
 
@@ -215,18 +277,24 @@ public class SessionEvaluator {
     /**
      * 评测结果。
      *
-     * @param assessmentJson JSON
-     * @param childSummary   儿童摘要
-     * @param decision       决策
-     * @param focus          焦点
-     * @param pauseNewVocab  暂停新词
+     * @param assessmentJson  JSON
+     * @param childSummary    儿童摘要
+     * @param parentSummary   家长小结
+     * @param decision        决策
+     * @param focus           焦点
+     * @param pauseNewVocab   暂停新词
      * @param insertStageJson 插入阶段 JSON
      * @author liudy
      */
-    public record EvalResult(String assessmentJson, String childSummary, Decision decision,
+    public record EvalResult(String assessmentJson, String childSummary, String parentSummary, Decision decision,
                              List<String> focus, boolean pauseNewVocab, String insertStageJson) {
         public EvalResult(String assessmentJson, String childSummary) {
-            this(assessmentJson, childSummary, Decision.COMPLETE, List.of(), false, null);
+            this(assessmentJson, childSummary, "", Decision.COMPLETE, List.of(), false, null);
+        }
+
+        public EvalResult(String assessmentJson, String childSummary, Decision decision,
+                          List<String> focus, boolean pauseNewVocab, String insertStageJson) {
+            this(assessmentJson, childSummary, "", decision, focus, pauseNewVocab, insertStageJson);
         }
     }
 

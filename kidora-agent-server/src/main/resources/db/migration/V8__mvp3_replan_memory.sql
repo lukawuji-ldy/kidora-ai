@@ -80,12 +80,13 @@ UPDATE prompt_template SET
     update_time = TIMESTAMPTZ '2026-09-10 00:00:00+00'
 WHERE code = 'cet.eval.user';
 
+-- 注意：10010–10017=CET MVP-1；10020–10021=chat（V4）；本迁移从 10022 起
 INSERT INTO prompt_template (id, code, name, role, prompt_group, content, published_version, status, create_time, update_time)
 VALUES
-(10020, 'cet.replan.system', 'CET 再规划系统提示', 'SYSTEM', 'CET_REPLAN',
+(10022, 'cet.replan.system', 'CET 再规划系统提示', 'SYSTEM', 'CET_REPLAN',
  '你是儿童英语课时再规划助手。根据评测信号修订训练计划。只输出合法 JSON，字段同开课计划：topic、cefr、personaId、objectives、stages（含 id/name/goal/targetTurns）、childSummary。可插入微练习阶段；pauseNewVocab 为 true 时勿加新词。措辞适合儿童。',
  1, 'ACTIVE', TIMESTAMPTZ '2026-09-10 00:00:00+00', TIMESTAMPTZ '2026-09-10 00:00:00+00'),
-(10021, 'cet.replan.user', 'CET 再规划用户提示', 'USER', 'CET_REPLAN',
+(10023, 'cet.replan.user', 'CET 再规划用户提示', 'USER', 'CET_REPLAN',
  '原计划：{{planJson}}\n评测：{{evalJson}}\nfocus={{focus}}，pauseNewVocab={{pauseNewVocab}}。请输出修订后的计划 JSON。',
  1, 'ACTIVE', TIMESTAMPTZ '2026-09-10 00:00:00+00', TIMESTAMPTZ '2026-09-10 00:00:00+00')
 ON CONFLICT (code) DO NOTHING;

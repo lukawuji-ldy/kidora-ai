@@ -1,0 +1,15 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none">
+  <!-- paw -->
+  <ellipse cx="72" cy="78" rx="22" ry="28" fill="#2f8f7b" opacity=".55"/>
+  <circle cx="52" cy="48" r="12" fill="#2f8f7b" opacity=".5"/>
+  <circle cx="72" cy="40" r="13" fill="#6bbf8a" opacity=".55"/>
+  <circle cx="94" cy="48" r="12" fill="#2f8f7b" opacity=".5"/>
+  <circle cx="108" cy="66" r="10" fill="#6bbf8a" opacity=".45"/>
+  <!-- cat silhouette -->
+  <path d="M150 150c0-28 18-46 40-46 8 0 14 2 20 6l8-18 10 16c8 4 12 12 12 22 0 34-22 52-50 52s-40-20-40-32z" fill="#3d9a6a" opacity=".42"/>
+  <circle cx="178" cy="138" r="4" fill="#fff6e8" opacity=".7"/>
+  <!-- dog bone -->
+  <path d="M40 180c8-8 20-8 28 0l36 36c8 8 8 20 0 28s-20 8-28 0l-36-36c-8-8-8-20 0-28z" fill="#e8b04a" opacity=".4"/>
+  <circle cx="48" cy="188" r="10" fill="#e8b04a" opacity=".45"/>
+  <circle cx="96" cy="236" r="10" fill="#e8b04a" opacity=".45"/>
+</svg>

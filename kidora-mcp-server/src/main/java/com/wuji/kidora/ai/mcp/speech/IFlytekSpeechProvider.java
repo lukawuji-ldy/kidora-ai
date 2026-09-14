@@ -105,15 +105,34 @@ public class IFlytekSpeechProvider implements SpeechProvider {
             byte[] audio = "lame".equals(encoding) ? raw : toPcmOrRaw(raw);
             VendorCredentials c = creds.get();
             String url = buildWssUrl(IAT_HOST, IAT_PATH, c.get("apiKey"), c.get("apiSecret"));
-            String text = iatRecognize(c.get("appId"), url, audio, encoding);
-            String loc = defaultLocale(locale);
-            return SpeechOutcome.ok("{\"text\":\"" + escape(text) + "\",\"confidence\":0.9,\"locale\":\""
-                    + escape(loc) + "\",\"provider\":\"" + PROVIDER_ID + "\"}");
+            String primaryLang = AsrTranscriptQuality.iFlytekLanguage(locale);
+            String primaryText = iatRecognize(c.get("appId"), url, audio, encoding, primaryLang);
+            String primaryLocale = AsrTranscriptQuality.localeForIFlytekLanguage(primaryLang);
+            if (!AsrTranscriptQuality.isWeak(primaryText)) {
+                return asrOk(primaryText, primaryLocale);
+            }
+            String secondaryLang = AsrTranscriptQuality.otherIFlytekLanguage(primaryLang);
+            String secondaryUrl = buildWssUrl(IAT_HOST, IAT_PATH, c.get("apiKey"), c.get("apiSecret"));
+            try {
+                String secondaryText = iatRecognize(c.get("appId"), secondaryUrl, audio, encoding, secondaryLang);
+                if (AsrTranscriptQuality.preferFallback(primaryText, secondaryText)) {
+                    return asrOk(secondaryText, AsrTranscriptQuality.localeForIFlytekLanguage(secondaryLang));
+                }
+            } catch (Exception fallbackEx) {
+                log.warn("iFlytek ASR zh/en fallback failed: {}", fallbackEx.getMessage());
+            }
+            return asrOk(primaryText, primaryLocale);
         } catch (Exception e) {
             log.warn("iFlytek ASR failed: {}", e.getMessage());
             return SpeechOutcome.error("VENDOR_API_FAILED",
                     StringUtils.hasText(e.getMessage()) ? e.getMessage() : "iFlytek ASR failed", PROVIDER_ID);
         }
+    }
+
+    private SpeechOutcome asrOk(String text, String locale) {
+        String loc = defaultLocale(locale);
+        return SpeechOutcome.ok("{\"text\":\"" + escape(text) + "\",\"confidence\":0.9,\"locale\":\""
+                + escape(loc) + "\",\"provider\":\"" + PROVIDER_ID + "\"}");
     }
 
     @Override
@@ -165,10 +184,12 @@ public class IFlytekSpeechProvider implements SpeechProvider {
         }
     }
 
-    private String iatRecognize(String appId, String wssUrl, byte[] audio, String encoding) throws Exception {
+    private String iatRecognize(String appId, String wssUrl, byte[] audio, String encoding, String language)
+            throws Exception {
         CompletableFuture<String> done = new CompletableFuture<>();
         StringBuilder text = new StringBuilder();
         String enc = StringUtils.hasText(encoding) ? encoding : "raw";
+        String lang = StringUtils.hasText(language) ? language : "en_us";
         WebSocket.Listener listener = new WebSocket.Listener() {
             private final StringBuilder frameBuf = new StringBuilder();
 
@@ -190,7 +211,7 @@ public class IFlytekSpeechProvider implements SpeechProvider {
                         if (st == 0 || (st == 2 && audio.length <= AUDIO_CHUNK)) {
                             frame.set("common", objectMapper.createObjectNode().put("app_id", appId));
                             frame.set("business", objectMapper.createObjectNode()
-                                    .put("language", "en_us")
+                                    .put("language", lang)
                                     .put("domain", "iat")
                                     .put("accent", "mandarin")
                                     .put("vad_eos", 3000));

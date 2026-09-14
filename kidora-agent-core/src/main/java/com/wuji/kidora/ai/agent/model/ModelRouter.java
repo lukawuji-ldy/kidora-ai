@@ -6,7 +6,6 @@ import com.wuji.kidora.ai.common.exception.KidoraException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -20,7 +19,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
- * 模型主备路由 + 审计包装的 ChatClient 调用。
+ * 模型主备路由 + 按 bizCaller 覆盖 + 审计包装的 ChatClient 调用。
  *
  * @author liudy
  */
@@ -54,6 +53,23 @@ public class ModelRouter {
             }
         }
         return new ArrayList<>(ids);
+    }
+
+    /**
+     * 解析 bizCaller 映射的 configId（未配置则 empty）。
+     *
+     * @param bizCaller CallContext.bizCaller
+     * @return 映射值
+     */
+    public Optional<String> mappedConfigId(String bizCaller) {
+        if (!StringUtils.hasText(bizCaller) || modelProperties.getCallerConfigIds() == null) {
+            return Optional.empty();
+        }
+        String mapped = modelProperties.getCallerConfigIds().get(bizCaller.trim());
+        if (!StringUtils.hasText(mapped)) {
+            return Optional.empty();
+        }
+        return Optional.of(mapped.trim());
     }
 
     public Optional<RoutedClient> tryOpen(String configId) {
@@ -90,17 +106,36 @@ public class ModelRouter {
     }
 
     /**
+     * 按 bizCaller 选模：有 caller-config-ids 映射则优先打开该配置，失败再回退 primary 链。
+     *
+     * @param bizCaller 如 CET_TUTOR / SAFETY；可空
+     * @return 可用客户端
+     */
+    public RoutedClient requireForCaller(String bizCaller) {
+        Optional<String> mapped = mappedConfigId(bizCaller);
+        if (mapped.isPresent()) {
+            Optional<RoutedClient> preferred = tryOpen(mapped.get());
+            if (preferred.isPresent()) {
+                return preferred.get();
+            }
+            log.warn("caller {} mapped config {} unavailable, fallback to primary chain",
+                    bizCaller, mapped.get());
+        }
+        return requirePrimary();
+    }
+
+    /**
      * 阻塞调用：system + user → 文本；写入审计。
      *
      * @author liudy
      */
     public String callText(CallContext ctx, String systemPrompt, String userPrompt) {
-        RoutedClient routed = requirePrimary();
+        RoutedClient routed = requireForCaller(ctx == null ? null : ctx.bizCaller());
         long start = System.currentTimeMillis();
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("system", systemPrompt);
         request.put("user", userPrompt);
-        request.put("bizCaller", ctx.bizCaller());
+        request.put("bizCaller", ctx == null ? null : ctx.bizCaller());
         try {
             String content = routed.chatClient().prompt()
                     .system(systemPrompt == null ? "" : systemPrompt)
@@ -135,12 +170,12 @@ public class ModelRouter {
      */
     public Flux<String> streamText(CallContext ctx, String systemPrompt, String userPrompt,
                                    Consumer<String> onComplete) {
-        RoutedClient routed = requirePrimary();
+        RoutedClient routed = requireForCaller(ctx == null ? null : ctx.bizCaller());
         long start = System.currentTimeMillis();
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("system", systemPrompt);
         request.put("user", userPrompt);
-        request.put("bizCaller", ctx.bizCaller());
+        request.put("bizCaller", ctx == null ? null : ctx.bizCaller());
         StringBuilder full = new StringBuilder();
         return routed.chatClient().prompt()
                 .system(systemPrompt == null ? "" : systemPrompt)
@@ -182,10 +217,9 @@ public class ModelRouter {
     /**
      * @param bizCaller 细分调用方：CET_PLAN|CET_TUTOR|CET_EVAL|SAFETY 等（写入 request_json）
      * @param bizSource 表字段：CHAT|CET
-      *
- * @author liudy
- */
-public record CallContext(
+     * @author liudy
+     */
+    public record CallContext(
             String traceId,
             String sessionId,
             String messageId,

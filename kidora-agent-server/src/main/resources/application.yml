@@ -31,8 +31,18 @@ kidora:
     api-key-override: ${KIDORA_LLM_API_KEY:}
     timeout: 60s
   agent:
+    id: kidora
     max-model-calls: 8
+    max-tool-rounds: 8
     chat-window-size: 20
+    checkpoint:
+      type: postgres
+      create-tables: false
+      host: 127.0.0.1
+      port: 5432
+      database: kidora_ai
+      username: postgres
+      password: ${spring.datasource.password}
   server:
     blocking-pool-size: 32
 

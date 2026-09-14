@@ -40,3 +40,6 @@ build/
 
 # 本地草稿与临时调研（正式 docs / 计划文件纳入版本库）
 /tmp/
+
+# CET 教具本地文件目录（元数据在 DB；大图不进 Git）
+cet-tutor-server/data/cet-props/

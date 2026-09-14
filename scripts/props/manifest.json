@@ -1,0 +1,82 @@
+{
+  "batch": "2026-09-14-openmoji-core",
+  "idBase": 51000,
+  "defaults": {
+    "sourceCode": "openmoji",
+    "licenseCode": "CC-BY-SA-4.0",
+    "author": "OpenMoji",
+    "downloadUrlTemplate": "https://raw.githubusercontent.com/hfg-gmuend/openmoji/master/color/618x618/{code}.png",
+    "sourceUrlTemplate": "https://openmoji.org/library/emoji-{code}/"
+  },
+  "items": [
+    { "lemma": "dog", "theme": "pets", "code": "1F436", "aliases": ["puppy", "狗", "小狗"] },
+    { "lemma": "cat", "theme": "pets", "code": "1F431", "aliases": ["kitten", "猫", "小猫"] },
+    { "lemma": "fish", "theme": "pets", "code": "1F41F", "aliases": ["鱼", "小鱼"] },
+    { "lemma": "bird", "theme": "pets", "code": "1F426", "aliases": ["鸟", "小鸟"] },
+    { "lemma": "rabbit", "theme": "pets", "code": "1F430", "aliases": ["bunny", "兔子", "兔"] },
+    { "lemma": "pet", "theme": "pets", "code": "1F43E", "aliases": ["pets", "animal", "animals", "宠物", "动物"] },
+
+    { "lemma": "apple", "theme": "food", "code": "1F34E", "aliases": ["fruit", "苹果", "水果"] },
+    { "lemma": "banana", "theme": "food", "code": "1F34C", "aliases": ["香蕉"] },
+    { "lemma": "bread", "theme": "food", "code": "1F35E", "aliases": ["面包"] },
+    { "lemma": "milk", "theme": "food", "code": "1F95B", "aliases": ["牛奶"] },
+    { "lemma": "egg", "theme": "food", "code": "1F95A", "aliases": ["鸡蛋", "蛋"] },
+    { "lemma": "cake", "theme": "food", "code": "1F370", "aliases": ["蛋糕"] },
+    { "lemma": "food", "theme": "food", "code": "1F37D", "aliases": ["食物", "吃的"] },
+
+    { "lemma": "red", "theme": "colors", "code": "1F534", "aliases": ["红", "红色"] },
+    { "lemma": "blue", "theme": "colors", "code": "1F535", "aliases": ["蓝", "蓝色"] },
+    { "lemma": "green", "theme": "colors", "code": "1F7E2", "aliases": ["绿", "绿色"] },
+    { "lemma": "yellow", "theme": "colors", "code": "1F7E1", "aliases": ["黄", "黄色"] },
+    { "lemma": "orange", "theme": "colors", "code": "1F7E0", "aliases": ["橙", "橙色"] },
+    { "lemma": "purple", "theme": "colors", "code": "1F7E3", "aliases": ["紫", "紫色"] },
+
+    { "lemma": "mother", "theme": "family", "code": "1F469", "aliases": ["mom", "mum", "妈妈", "母亲"] },
+    { "lemma": "father", "theme": "family", "code": "1F468", "aliases": ["dad", "爸爸", "父亲"] },
+    { "lemma": "baby", "theme": "family", "code": "1F476", "aliases": ["宝宝", "婴儿"] },
+    { "lemma": "family", "theme": "family", "code": "1F46A", "aliases": ["家人", "家庭"] },
+    { "lemma": "girl", "theme": "family", "code": "1F467", "aliases": ["sister", "女孩", "姐姐", "妹妹"] },
+    { "lemma": "boy", "theme": "family", "code": "1F466", "aliases": ["brother", "男孩", "哥哥", "弟弟"] },
+
+    { "lemma": "hand", "theme": "body", "code": "1F590", "aliases": ["手"] },
+    { "lemma": "eye", "theme": "body", "code": "1F441", "aliases": ["eyes", "眼睛", "眼"] },
+    { "lemma": "ear", "theme": "body", "code": "1F442", "aliases": ["ears", "耳朵", "耳"] },
+    { "lemma": "nose", "theme": "body", "code": "1F443", "aliases": ["鼻子", "鼻"] },
+    { "lemma": "mouth", "theme": "body", "code": "1F444", "aliases": ["嘴巴", "嘴"] },
+    { "lemma": "foot", "theme": "body", "code": "1F9B6", "aliases": ["feet", "脚"] },
+
+    { "lemma": "sun", "theme": "weather", "code": "2600", "aliases": ["sunny", "太阳", "晴天"] },
+    { "lemma": "rain", "theme": "weather", "code": "1F327", "aliases": ["rainy", "雨", "下雨"] },
+    { "lemma": "snow", "theme": "weather", "code": "2744", "aliases": ["snowy", "雪", "下雪"] },
+    { "lemma": "cloud", "theme": "weather", "code": "2601", "aliases": ["cloudy", "云", "多云"] },
+    { "lemma": "wind", "theme": "weather", "code": "1F32C", "aliases": ["windy", "风", "刮风"] },
+    { "lemma": "rainbow", "theme": "weather", "code": "1F308", "aliases": ["彩虹"] },
+
+    { "lemma": "one", "theme": "numbers", "code": "0031-FE0F-20E3", "aliases": ["1", "一"] },
+    { "lemma": "two", "theme": "numbers", "code": "0032-FE0F-20E3", "aliases": ["2", "二"] },
+    { "lemma": "three", "theme": "numbers", "code": "0033-FE0F-20E3", "aliases": ["3", "三"] },
+    { "lemma": "four", "theme": "numbers", "code": "0034-FE0F-20E3", "aliases": ["4", "四"] },
+    { "lemma": "five", "theme": "numbers", "code": "0035-FE0F-20E3", "aliases": ["5", "五"] },
+
+    { "lemma": "book", "theme": "school", "code": "1F4D6", "aliases": ["书", "书本"] },
+    { "lemma": "pencil", "theme": "school", "code": "270F", "aliases": ["铅笔", "笔"] },
+    { "lemma": "bag", "theme": "school", "code": "1F392", "aliases": ["backpack", "书包", "包"] },
+    { "lemma": "ruler", "theme": "school", "code": "1F4CF", "aliases": ["尺子", "直尺"] },
+    { "lemma": "chair", "theme": "school", "code": "1FA91", "aliases": ["椅子"] },
+    { "lemma": "clock", "theme": "school", "code": "1F553", "aliases": ["时钟", "钟"] },
+
+    { "lemma": "shirt", "theme": "clothes", "code": "1F455", "aliases": ["tshirt", "衬衫", "上衣"] },
+    { "lemma": "pants", "theme": "clothes", "code": "1F456", "aliases": ["trousers", "裤子"] },
+    { "lemma": "shoe", "theme": "clothes", "code": "1F45F", "aliases": ["shoes", "鞋", "鞋子"] },
+    { "lemma": "hat", "theme": "clothes", "code": "1F452", "aliases": ["帽子"] },
+    { "lemma": "socks", "theme": "clothes", "code": "1F9E6", "aliases": ["sock", "袜子"] },
+    { "lemma": "dress", "theme": "clothes", "code": "1F457", "aliases": ["裙子", "连衣裙"] },
+
+    { "lemma": "car", "theme": "transport", "code": "1F697", "aliases": ["汽车", "小汽车"] },
+    { "lemma": "bus", "theme": "transport", "code": "1F68C", "aliases": ["公交车", "巴士"] },
+    { "lemma": "bike", "theme": "transport", "code": "1F6B2", "aliases": ["bicycle", "自行车", "单车"] },
+    { "lemma": "train", "theme": "transport", "code": "1F686", "aliases": ["火车"] },
+    { "lemma": "plane", "theme": "transport", "code": "2708", "aliases": ["airplane", "飞机"] },
+    { "lemma": "boat", "theme": "transport", "code": "26F5", "aliases": ["ship", "船"] }
+  ]
+}

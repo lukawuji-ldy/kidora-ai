@@ -32,7 +32,8 @@ class SessionEvaluatorTest {
         String json = """
                 {"grammar":60,"vocabulary":55,"fluency":50,"decision":"replan",
                  "focus":["grammar:third_person_s"],"pauseNewVocab":true,
-                 "childSummary":"再练练","encouragement":"加油"}
+                 "childSummary":"再练练","encouragement":"加油",
+                 "parentSummary":"本节重点练第三人称单数，建议回家再复述两句。"}
                 """;
         SessionEvaluator.EvalResult result = SessionEvaluator.parseEvalResult(
                 mapper, json, SessionEvaluator.Decision.CONTINUE);
@@ -41,6 +42,39 @@ class SessionEvaluatorTest {
         assertEquals(1, result.focus().size());
         assertEquals("grammar:third_person_s", result.focus().get(0));
         assertTrue(result.assessmentJson().contains("\"decision\":\"replan\""));
+        assertEquals("本节重点练第三人称单数，建议回家再复述两句。", result.parentSummary());
+    }
+
+    @Test
+    void parseEvalResult_synthesizesParentSummaryWhenMissing() throws Exception {
+        String json = """
+                {"grammar":80,"vocabulary":70,"fluency":75,"decision":"complete",
+                 "problems":["I has a dog → I have a dog"],
+                 "focus":["grammar:have_has"],
+                 "pauseNewVocab":false,
+                 "childSummary":"你说「I has a dog」→「I have a dog」更准确。","encouragement":"很棒！"}
+                """;
+        SessionEvaluator.EvalResult result = SessionEvaluator.parseEvalResult(
+                mapper, json, SessionEvaluator.Decision.COMPLETE);
+        assertTrue(result.parentSummary().contains("语法 80"));
+        assertTrue(result.parentSummary().contains("I has a dog"));
+        assertTrue(result.parentSummary().contains("have_has")
+                || result.parentSummary().contains("grammar:have_has"));
+    }
+
+    @Test
+    void synthesizeParentSummary_fromScoresAndProblems() throws Exception {
+        String json = """
+                {"grammar":90,"vocabulary":85,"fluency":80,
+                 "problems":["cat → It's a cat"],
+                 "focus":["vocabulary:animals"],
+                 "pauseNewVocab":true,
+                 "childSummary":"今天认识了动物词。","encouragement":"加油"}
+                """;
+        String summary = SessionEvaluator.synthesizeParentSummary(mapper.readTree(json));
+        assertTrue(summary.contains("词汇 85"));
+        assertTrue(summary.contains("cat → It's a cat"));
+        assertTrue(summary.contains("暂缓引入新词") || summary.contains("新词"));
     }
 
     @Test

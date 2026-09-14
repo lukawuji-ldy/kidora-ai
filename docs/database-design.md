@@ -47,8 +47,8 @@
 | `app_user` | [`01_app_user.sql`](../schema/01_app_user.sql) | 前台登录用户（家长/老师） |
 | `learner_profile` | [`02_learner_profile.sql`](../schema/02_learner_profile.sql) | 儿童学习者基础档案 |
 | `llm_config` | [`03_llm_config.sql`](../schema/03_llm_config.sql) | 模型连接（`CHAT` \| `EMBEDDING`） |
-| `prompt_template` | [`04_prompt_template.sql`](../schema/04_prompt_template.sql) | 提示词线上副本（`name`/`content` 须中文） |
-| `prompt_template_version` | [`05_prompt_template_version.sql`](../schema/05_prompt_template_version.sql) | 提示词版本历史（同上） |
+| `prompt_template` | [`04_prompt_template.sql`](../schema/04_prompt_template.sql) | 提示词线上副本（`name`/`content` 须中文）；运行时读取 |
+| `prompt_template_version` | [`05_prompt_template_version.sql`](../schema/05_prompt_template_version.sql) | 提示词版本历史（`DRAFT`/`PUBLISHED`/`SUPERSEDED`）；Flyway/管理台发版须增版，禁止原地覆盖 published 正文 |
 | `chat_session` | [`06_chat_session.sql`](../schema/06_chat_session.sql) | 通用聊天会话 |
 | `chat_message` | [`07_chat_message.sql`](../schema/07_chat_message.sql) | 通用聊天消息 |
 | `llm_call_log` | [`08_llm_call_log.sql`](../schema/08_llm_call_log.sql) | 入模审计；`biz_source`：`CHAT`\|`CET` |
@@ -60,10 +60,21 @@
 | `speech_route` | [`20_speech_route.sql`](../schema/20_speech_route.sql) | 语音主备路由（仅 primary 生效） |
 | `cet_training_plan_revision` | [`21_cet_training_plan_revision.sql`](../schema/21_cet_training_plan_revision.sql) | 计划修订历史（MVP-3） |
 | `learner_semantic_memory` | [`22_learner_semantic_memory.sql`](../schema/22_learner_semantic_memory.sql) | 语义短事实（MVP-3；无强制 embedding） |
+| `cet_persona_voice` | [`23_cet_persona_voice.sql`](../schema/23_cet_persona_voice.sql) | 人设 ↔ 厂商 TTS 音色（seed：tencent × 6 + iflytek × 6） |
+| `cet_prop_asset` | [`25_cet_prop_asset.sql`](../schema/25_cet_prop_asset.sql) | 教具道具本地库（lemma 唯一；含来源/许可元数据；`aliases_json` 为运行时词表唯一权威） |
+| `cet_prop_asset_generation_task` | [`26_cet_prop_asset_generation_task.sql`](../schema/26_cet_prop_asset_generation_task.sql) | 缺失道具生成任务、版本与审核状态 |
+| `GraphThread` | [`24_agent_checkpoint.sql`](../schema/24_agent_checkpoint.sql) | Agent Checkpoint 线程（PostgresSaver；库内小写 `graphthread`） |
+| `GraphCheckpoint` | [`24_agent_checkpoint.sql`](../schema/24_agent_checkpoint.sql) | Agent Checkpoint 快照（库内小写 `graphcheckpoint`） |
 
 **后续：** `user_profile`（通用家长画像，分期）；`kb_*`（MVP-5，见 [rag-design.md](rag-design.md)）。
 
-Flyway：`V6__mcp_registry.sql` 建表并 seed 本地 MCP；`V7__speech_vendor.sql` seed 讯飞主 / 腾讯备 / Azure 第三档；`V8__mvp3_replan_memory.sql`：`cet_training_plan_revision` + `learner_semantic_memory` + 词典绑定 + Re-plan 提示词。
+Flyway：`V6__mcp_registry.sql` 建表并 seed 本地 MCP；`V7__speech_vendor.sql` seed 讯飞主 / 腾讯备 / Azure 第三档；`V8__mvp3_replan_memory.sql`：`cet_training_plan_revision` + `learner_semantic_memory` + 词典绑定 + Re-plan 提示词；`V11__cet_persona_voice.sql`：人设音色映射 + 腾讯 seed；`V19__agent_checkpoint.sql`：`GraphThread` / `GraphCheckpoint`；`V20__cet_prop_asset.sql` + `V21__cet_prop_asset_seed.sql`：教具本地库表与 seed 元数据；`V25__cet_persona_voice_iflytek.sql`：讯飞人设音色 seed；`V27__cet_prop_asset_generation_task.sql`：缺失道具生成任务与审核版本；`V30__cet_tutor_prop_availability_guard.sql`：无可用道具图片时禁止图片指认提问；`V31__cet_prop_asset_license.sql`：来源/许可/校验和/尺寸字段 + 许可白名单 CHECK + 存量回填 + 别名词表下沉到 `aliases_json`；`V32__cet_prop_asset_seed_*.sql`：由 `scripts/props/import-props.mjs` 生成的素材批次（首批 OpenMoji 60 个 / 10 主题），用法见 [`scripts/props/README.md`](../scripts/props/README.md)。
+
+**Checkpoint 约定：** `thread_name` = `userId:sessionId`；与 `chat_message` 分离；管理台只读回放，禁止 resume/改写。
+**`cet_persona_voice` 索引 / 约束：** `uk_cet_persona_voice_persona_vendor` = `UNIQUE (persona_id, vendor_code)`；`idx_cet_persona_voice_vendor_status` = `(vendor_code, status)`。
+**`cet_prop_asset` 索引 / 约束：** `uk_cet_prop_asset_lemma` = `UNIQUE (lemma)`；`idx_cet_prop_asset_status_lemma` = `(status, lemma)`；`ck_cet_prop_asset_source` 限定 `source_code ∈ {openmoji, openclipart, wikimedia, pixabay, kenney, local, generated}`；`ck_cet_prop_asset_license` 限定 `license_code ∈ {CC0-1.0, PD, CC-BY-4.0, CC-BY-SA-4.0, PIXABAY}`（**许可白名单**，导入脚本同步硬校验，不在表内的协议一律拒绝落盘）。
+**`cet_prop_asset` 许可字段：** `attribution_required = TRUE` 的行必须能在前台 `/legal/credits`（`GET /api/cet/props/credits`）看到，否则不满足 CC-BY / CC-BY-SA 协议；`checksum_sha256` 同时用于取图 ETag 与 `scripts/props/verify-props.mjs` 体检；`width`/`height` 为 0 表示矢量图或未采集。
+**`cet_prop_asset_generation_task` 状态：** `QUEUED` → `GENERATING` → `PENDING_REVIEW` → `APPROVED`；失败为 `FAILED`，驳回为 `REJECTED`，同 lemma/主题的待处理任务通过部分唯一索引幂等。**本仓库只负责 `enqueueMissing` 入队**，生成 / 审核 / 发布在旁路仓库 `kidora-ai-manage`；常用词通过导入脚本补齐后，该队列应保持为空。
 
 ---
 
@@ -73,16 +84,23 @@ Flyway：`V6__mcp_registry.sql` 建表并 seed 本地 MCP；`V7__speech_vendor.s
 |---|---|---|
 | `cet_lesson_session` | [`11_cet_lesson_session.sql`](../schema/11_cet_lesson_session.sql) | 一次陪练会话 |
 | `cet_training_plan` | [`12_cet_training_plan.sql`](../schema/12_cet_training_plan.sql) | 当前生效计划 JSON |
-| `cet_tutor_turn` | [`13_cet_tutor_turn.sql`](../schema/13_cet_tutor_turn.sql) | Tutor 小循环轮次 |
+| `cet_tutor_turn` | [`13_cet_tutor_turn.sql`](../schema/13_cet_tutor_turn.sql) | Tutor 小循环轮次（含 `timing_json` 分段耗时） |
 | `cet_turn_assessment` | [`14_cet_turn_assessment.sql`](../schema/14_cet_turn_assessment.sql) | 评测结果（MVP-1 会话摘要） |
 | `cet_session_report` | [`15_cet_session_report.sql`](../schema/15_cet_session_report.sql) | 结课报告快照 |
 | `cet_safety_event` | [`16_cet_safety_event.sql`](../schema/16_cet_safety_event.sql) | Safety 命中事件 |
+| `cet_persona_voice` | [`23_cet_persona_voice.sql`](../schema/23_cet_persona_voice.sql) | 人设 TTS 音色映射 |
+| `cet_prop_asset` | [`25_cet_prop_asset.sql`](../schema/25_cet_prop_asset.sql) | 教具道具本地库 |
+| `cet_prop_asset_generation_task` | [`26_cet_prop_asset_generation_task.sql`](../schema/26_cet_prop_asset_generation_task.sql) | 教具缺失生成与审核版本 |
 
 **后续：** 细粒度轮次评测字段充实；家长报告打磨（MVP-4）。`cet_training_plan_revision` / `learner_semantic_memory` 已落地（见上表）。
 
 ### 4.1 `cet_lesson_session` 状态机
 
 `CREATED` → `PLANNING` → `PRACTICING` → `EVALUATING` → (`REPLANNING` → `PRACTICING`)* → `COMPLETED` | `ABORTED` | `SAFETY_BLOCKED`
+
+### 4.1a `cet_tutor_turn.timing_json`
+
+Flyway：`V14__cet_turn_timing.sql`。JSONB，schemaVersion=1；含 `asrMs` / `safetyInMs` / `tutorMs` / `safetyOutMs` / `ttsMs` / `scoreMs` / `persistMs` / `stageEvalMs` / `ttsReadyMs` / `serverTotalMs`、`skipped.*`、`client.e2eHeardMs`（客户端上报后写入）。**不含**音频与对话原文。详见 [2026-09-11-cet-turn-latency-metrics-design.md](superpowers/specs/2026-09-11-cet-turn-latency-metrics-design.md)。
 
 ### 4.2 计划 / 评测 JSON 最小字段
 
@@ -93,6 +111,7 @@ Flyway：`V6__mcp_registry.sql` 建表并 seed 本地 MCP；`V7__speech_vendor.s
   "topic": "介绍我的宠物",
   "cefr": "A1",
   "personaId": "emma",
+  "childGoals": ["认识 pet/dog", "会说 I have a...", "用起来简单问答"],
   "objectives": {
     "vocabulary": ["pet", "dog", "cute"],
     "patterns": ["I have a..."],

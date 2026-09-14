@@ -67,6 +67,10 @@ public class LessonReplanner {
                 json = mergeInsertStage(json, eval.insertStageJson());
                 node = objectMapper.readTree(json);
             }
+            if (node instanceof ObjectNode objectNode) {
+                PlanLearningHints.ensureChildGoals(objectNode, objectNode.path("topic").asText("review"));
+                json = objectMapper.writeValueAsString(objectNode);
+            }
             String childSummary = node.path("childSummary").asText(
                     StringUtils.hasText(eval.childSummary()) ? eval.childSummary() : "我们换个方式继续练！");
             return new ReplanResult(json, childSummary);
@@ -112,6 +116,7 @@ public class LessonReplanner {
                     ((ObjectNode) objectives).putArray("vocabulary");
                 }
             }
+            PlanLearningHints.ensureChildGoals(root, root.path("topic").asText("review"));
             return root.toString();
         } catch (Exception e) {
             ObjectNode root = objectMapper.createObjectNode();
@@ -126,6 +131,7 @@ public class LessonReplanner {
             s.put("goal", "review");
             s.put("targetTurns", 3);
             root.put("childSummary", "我们换个方式继续练！");
+            PlanLearningHints.ensureChildGoals(root, "review");
             return root.toString();
         }
     }

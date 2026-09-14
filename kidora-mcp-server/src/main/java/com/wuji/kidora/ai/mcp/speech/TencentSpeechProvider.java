@@ -90,24 +90,54 @@ public class TencentSpeechProvider implements SpeechProvider {
                         "Tencent appId looks like account Uin (" + appId
                                 + "); use AppId from CAM API key page", PROVIDER_ID);
             }
-            long ts = System.currentTimeMillis() / 1000;
-            String voiceFormat = detectVoiceFormatName(audio);
-            String query = buildFlashQuery(c.get("secretId"), ts, voiceFormat);
-            String url = "https://asr.cloud.tencent.com/asr/flash/v1/" + appId + "?" + query;
-            String sign = signFlash(c.get("secretKey"), appId, query);
-            String body = webClient.post()
-                    .uri(url)
-                    .header("Authorization", sign)
-                    .header("Content-Type", "application/octet-stream")
-                    .header("Host", "asr.cloud.tencent.com")
-                    .bodyValue(audio)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block(TIMEOUT);
-            return mapAsr(body, locale);
+            String primaryEngine = AsrTranscriptQuality.tencentEngineType(locale);
+            SpeechOutcome primary = flashAsr(c, appId, audio, primaryEngine,
+                    AsrTranscriptQuality.localeForTencentEngine(primaryEngine));
+            if (!primary.success()) {
+                return primary;
+            }
+            String primaryText = readAsrText(primary.jsonBody());
+            if (!AsrTranscriptQuality.isWeak(primaryText)) {
+                return primary;
+            }
+            String secondaryEngine = AsrTranscriptQuality.otherTencentEngine(primaryEngine);
+            SpeechOutcome secondary = flashAsr(c, appId, audio, secondaryEngine,
+                    AsrTranscriptQuality.localeForTencentEngine(secondaryEngine));
+            if (!secondary.success()) {
+                return primary;
+            }
+            String secondaryText = readAsrText(secondary.jsonBody());
+            return AsrTranscriptQuality.preferFallback(primaryText, secondaryText) ? secondary : primary;
         } catch (Exception e) {
             log.warn("Tencent ASR failed: {}", e.getMessage());
             return SpeechOutcome.error("VENDOR_API_FAILED", "Tencent ASR failed", PROVIDER_ID);
+        }
+    }
+
+    private SpeechOutcome flashAsr(VendorCredentials c, String appId, byte[] audio,
+                                   String engineType, String locale) throws Exception {
+        long ts = System.currentTimeMillis() / 1000;
+        String voiceFormat = detectVoiceFormatName(audio);
+        String query = buildFlashQuery(c.get("secretId"), ts, voiceFormat, engineType);
+        String url = "https://asr.cloud.tencent.com/asr/flash/v1/" + appId + "?" + query;
+        String sign = signFlash(c.get("secretKey"), appId, query);
+        String body = webClient.post()
+                .uri(url)
+                .header("Authorization", sign)
+                .header("Content-Type", "application/octet-stream")
+                .header("Host", "asr.cloud.tencent.com")
+                .bodyValue(audio)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block(TIMEOUT);
+        return mapAsr(body, locale);
+    }
+
+    String readAsrText(String jsonBody) {
+        try {
+            return objectMapper.readTree(jsonBody).path("text").asText("");
+        } catch (Exception e) {
+            return "";
         }
     }
 
@@ -134,7 +164,7 @@ public class TencentSpeechProvider implements SpeechProvider {
                     .put("Text", text)
                     .put("SessionId", UUID.randomUUID().toString())
                     .put("VoiceType", voiceTypeInt)
-                    .put("Codec", "wav")
+                    .put("Codec", "mp3")
                     .toString();
             String authorization = tc3Authorization(c.get("secretId"), c.get("secretKey"), "tts", host, payload, timestamp);
             String body = webClient.post()
@@ -206,7 +236,7 @@ public class TencentSpeechProvider implements SpeechProvider {
             audio = root.path("audio").asText("");
         }
         String loc = defaultLocale(locale);
-        return SpeechOutcome.ok("{\"audioBase64\":\"" + audio + "\",\"mimeType\":\"audio/wav\",\"voice\":\""
+        return SpeechOutcome.ok("{\"audioBase64\":\"" + audio + "\",\"mimeType\":\"audio/mpeg\",\"voice\":\""
                 + escape(voice) + "\",\"locale\":\"" + escape(loc) + "\",\"provider\":\"" + PROVIDER_ID + "\"}");
     }
 
@@ -471,9 +501,13 @@ public class TencentSpeechProvider implements SpeechProvider {
     }
 
     static String buildFlashQuery(String secretId, long timestamp, String voiceFormat) {
+        return buildFlashQuery(secretId, timestamp, voiceFormat, "16k_en");
+    }
+
+    static String buildFlashQuery(String secretId, long timestamp, String voiceFormat, String engineType) {
         java.util.TreeMap<String, String> params = new java.util.TreeMap<>();
         params.put("convert_num_mode", "1");
-        params.put("engine_type", "16k_en");
+        params.put("engine_type", StringUtils.hasText(engineType) ? engineType : "16k_en");
         params.put("filter_dirty", "0");
         params.put("filter_modal", "0");
         params.put("filter_punc", "0");

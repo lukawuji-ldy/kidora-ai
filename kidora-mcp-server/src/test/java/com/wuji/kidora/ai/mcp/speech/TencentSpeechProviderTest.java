@@ -64,4 +64,13 @@ class TencentSpeechProviderTest {
         assertTrue(sign.length() > 10);
         assertFalse(sign.contains(" "));
     }
+
+    @Test
+    void buildFlashQuery_usesEngineType() {
+        String en = TencentSpeechProvider.buildFlashQuery("sid", 1700000000L, "wav");
+        assertTrue(en.contains("engine_type=16k_en"));
+        String zh = TencentSpeechProvider.buildFlashQuery("sid", 1700000000L, "wav", "16k_zh");
+        assertTrue(zh.contains("engine_type=16k_zh"));
+        assertFalse(zh.contains("engine_type=16k_en"));
+    }
 }

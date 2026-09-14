@@ -6,6 +6,9 @@ spring:
     name: kidora-mcp-server
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
+  # ASR/TTS 入参与厂商响应常超 WebFlux 默认 256KB（否则 /mcp/message 500、Tencent TTS DataBufferLimitException）
+  codec:
+    max-in-memory-size: 16MB
   datasource:
     url: ${KIDORA_DB_URL:jdbc:postgresql://127.0.0.1:5432/kidora_ai}
     username: ${KIDORA_DB_USER:postgres}
@@ -28,7 +31,7 @@ kidora:
       api-key: ${KIDORA_MCP_API_KEY:}
   speech:
     # stub：本地/CI；db：读 speech_route.primary（iflytek/tencent）
-    mode: ${KIDORA_SPEECH_MODE:stub}
+    mode: ${KIDORA_SPEECH_MODE:db}
     api-key-secret: ${KIDORA_API_KEY_SECRET:change-me-kidora-api-key-secret-32bytes!}
     azure:
       key: ${AZURE_SPEECH_KEY:}
@@ -37,7 +40,7 @@ kidora:
       default-locale: en-US
   dictionary:
     # stub：本地/CI；http：Free Dictionary API
-    mode: ${KIDORA_DICTIONARY_MODE:stub}
+    mode: ${KIDORA_DICTIONARY_MODE:db}
     http-base-url: ${KIDORA_DICTIONARY_HTTP_BASE:https://api.dictionaryapi.dev/api/v2/entries/en}
 
 logging:

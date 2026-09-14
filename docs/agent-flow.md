@@ -18,18 +18,19 @@ CET 专用大/小循环见 [cet-tutor-design.md](cet-tutor-design.md)。
 
 | 组件 | 职责 |
 |---|---|
-| `ModelRouter` | primary + fallbacks（CHAT）；包装审计的 `callText` / `streamText` |
-| `LlmClientFactory` | 按 `llm_config` 缓存 OpenAI Compatible `ChatClient` |
+| `ModelRouter` | primary + fallbacks（CHAT）；可选 `kidora.model.caller-config-ids` 按 `bizCaller` 覆盖（如 CET 陪练 `CET_TUTOR → llm_chat_primary`）；包装审计的 `callText` / `streamText`（CET 等仍用） |
+| `LlmClientFactory` | 按 `llm_config` 缓存 OpenAI Compatible `ChatModel` / `ChatClient` |
 | `PromptTemplateService` | 读 `prompt_template` + `{{var}}` 渲染 |
 | `LlmCallAuditor` | 写 `llm_call_log`（含 `learner_id` / `biz_source`） |
 | `DetachedBlockingMono` | 阻塞 JDBC/LLM 离开 WebFlux 取消路径 |
-| `ChatFacade` | 通用 Chat：`chat_session`/`chat_message` 短窗 + 流式回复（**无工具**） |
-| `AgentFactory` | 空壳；`kidora.agent.max-model-calls` 占位，ReactAgent/MCP 后续 |
-| MCP Client | **未实现** |
+| `ChatFacade` | 通用 Chat：`chat_session`/`chat_message` 短窗 + **有界 ReactAgent** 流式（**无工具**） |
+| `AgentFactory` | 按 `configId` 缓存 ReactAgent；`PostgresSaver`/`MemorySaver` + `max-model-calls` / `max-tool-rounds` |
+| `CheckpointSaverFactory` | 构建进程单例 Checkpoint Saver（默认 Postgres，DDL 由 Flyway 管理） |
+| MCP Client | **未实现**（本期 Chat 不挂工具） |
 
 根包：`com.wuji.kidora.ai.agent`（core）、`com.wuji.kidora.ai.agent.server`（Boot）、`com.wuji.kidora.ai.cet.core` / `cet.server`（CET）。
 
-CET 主路径使用 **ChatClient 结构化调用 + 课时状态机**；Tutor 输出 **先完整生成 → L2 闸门 → 分块 SSE**。通用 Chat 同用 `ModelRouter.streamText`，`biz_source=CHAT`。
+CET 主路径使用 **ChatClient 结构化调用 + 课时状态机**；Tutor 输出 **先完整生成 → L2 闸门 → 分块 SSE**。通用 Chat 走 ReactAgent + Checkpoint，`biz_source=CHAT`。
 
 ---
 
@@ -38,21 +39,25 @@ CET 主路径使用 **ChatClient 结构化调用 + 课时状态机**；Tutor 输
 ```
 Request (User JWT)
   → 鉴权
-  → ChatFacade：写 user 消息 → 近 N=20 条短窗
-  → PromptTemplate（chat.system / chat.user）
-  → ModelRouter.streamText（审计）
+  → ChatFacade：写 user 消息 → 近 N=20 条短窗（user/assistant Message 列表）
+  → PromptTemplate（chat.system → RunnableConfig metadata）
+  → AgentFactory.getOrCreate → ReactAgent.streamMessages（threadId=userId:sessionId）
   → SSE：message.delta* / error / done
-  → 写 assistant 消息
+  → 写 assistant 消息 + llm_call_log 审计
 ```
 
-本期不做 Memory 异步抽取、不做工具轮次。达上限错误码 `AGENT_MAX_ITERATIONS` 预留给后续 Agent 环。
+本期不做 Memory 异步抽取、不做工具轮次。达上限错误码 `AGENT_MAX_ITERATIONS`。
+
 ---
 
 ## 4. Checkpoint 与 Chat Memory
 
-- 短记忆：当前 session 窗口 + watermark，禁止无限历史入模。
-- Checkpoint：用于中断恢复（实现期按框架能力开启）。
-- CET 会话状态以 `cet_lesson_session` / `cet_training_plan` 为准，不与通用 `chat_session` 混用主键语义。
+- **Chat Memory（用户可见）**：`chat_session` / `chat_message` 短窗；禁止把 checkpoint 当聊天历史展示。
+- **Graph Checkpoint（运维可回放）**：Spring AI Alibaba `PostgresSaver` → 表 `GraphThread` / `GraphCheckpoint`（库内小写 `graphthread` / `graphcheckpoint`）。
+  - `thread_name` = 业务 `threadId` = `userId:sessionId`
+  - 配置：`kidora.agent.checkpoint.*`（默认 `type=postgres`，`create-tables=false`）
+  - 管理台只读回放：`GET /api/admin/logs/checkpoints/**`（旁路 `kidora-ai-manage`）
+- CET 会话状态以 `cet_lesson_session` / `cet_training_plan` 为准，**不**写入 Graph Checkpoint。
 
 ---
 
@@ -91,7 +96,9 @@ Request (User JWT)
 ## 8. 主备模型
 
 - `ModelRouter`：primary 失败可切换 fallbacks（同 kind=`CHAT`）。
+- **按调用方覆盖：** `kidora.model.caller-config-ids`（map：`bizCaller` → `llm_config.config_id`）。命中则优先打开该配置，不可用再回退 primary 链。CET 陪练默认示例：`CET_TUTOR: llm_chat_primary`（更快 chat 模型）；`SAFETY` / `CET_PLAN` / `CET_EVAL` 未映射时仍走 `primary-config-id`。
 - Embedding 独立 `config_id`，禁止与对话行混用 `model` 字段。
+- 管理台改 `llm_config` 后须**重启** agent / cet 进程方可加载新连接参数。
 
 ---
 

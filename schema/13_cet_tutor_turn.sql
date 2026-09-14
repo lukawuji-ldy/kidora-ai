@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS cet_tutor_turn
     child_text        TEXT,
     child_asr_json    JSONB,
     signals_json      JSONB,
+    timing_json       JSONB,
     create_time       TIMESTAMPTZ  NOT NULL,
     CONSTRAINT uk_cet_tutor_turn_id UNIQUE (turn_id),
     CONSTRAINT uk_cet_tutor_turn_lesson_idx UNIQUE (lesson_session_id, turn_index)
@@ -30,4 +31,5 @@ COMMENT ON COLUMN cet_tutor_turn.tutor_text IS '外教回复文本';
 COMMENT ON COLUMN cet_tutor_turn.child_text IS '儿童输入文本（MVP-1）';
 COMMENT ON COLUMN cet_tutor_turn.child_asr_json IS 'ASR 结果（MVP-2）；文本陪练可空';
 COMMENT ON COLUMN cet_tutor_turn.signals_json IS '中间信号（卡顿、求助等）';
+COMMENT ON COLUMN cet_tutor_turn.timing_json IS '一轮陪练分段耗时（毫秒）与 skip/client 上报；不含音频与对话原文';
 COMMENT ON COLUMN cet_tutor_turn.create_time IS '创建时间';

@@ -66,6 +66,10 @@ public class LessonPlanner {
             String raw = modelRouter.callText(planCtx, system, user);
             String json = SafetyGuard.extractJson(raw);
             JsonNode node = objectMapper.readTree(json);
+            if (node instanceof ObjectNode objectNode) {
+                PlanLearningHints.ensureChildGoals(objectNode, topic);
+                json = objectMapper.writeValueAsString(objectNode);
+            }
             String childSummary = node.path("childSummary").asText("Let's practice " + topic + "!");
             return new PlanResult(json, childSummary, persona, cefr);
         } catch (Exception e) {
@@ -99,16 +103,24 @@ public class LessonPlanner {
         root.put("topic", topic);
         root.put("cefr", cefr);
         root.put("personaId", persona);
-        ArrayNode objectives = root.putArray("objectives");
-        objectives.add("Warm up greetings");
-        objectives.add("Practice topic vocabulary");
+        ObjectNode objectives = root.putObject("objectives");
+        ArrayNode vocabulary = objectives.putArray("vocabulary");
+        vocabulary.add("hello");
+        vocabulary.add("please");
+        ArrayNode patterns = objectives.putArray("patterns");
+        patterns.add("It's ...");
+        patterns.add("big / small");
+        patterns.add("What color...");
+        patterns.add("I like...");
         ArrayNode stages = root.putArray("stages");
-        stages.add(stage("warmup", "Warm-up", "Greet and introduce topic", 2));
-        stages.add(stage("vocab", "Vocabulary", "Learn 3-5 words", 3));
-        stages.add(stage("model", "Model", "Listen to tutor model", 2));
-        stages.add(stage("dialog", "Dialog", "Practice dialog", 5));
-        stages.add(stage("wrapup", "Wrap-up", "Encourage and summarize", 1));
+        stages.add(stage("warmup", "Warm-up", "Greet; name or choose one topic word (not yes/no only)", 2));
+        stages.add(stage("vocab", "Vocabulary", "Point/name 3-5 words; mix color/size where relevant", 3));
+        stages.add(stage("model", "Model", "Model short phrases; child repeats (Say: ...)", 2));
+        stages.add(stage("dialog", "Dialog",
+                "Vary asks: point, choose, compare, describe; avoid same-template Do-you-like chains", 5));
+        stages.add(stage("wrapup", "Wrap-up", "Encourage and summarize one favorite phrase", 1));
         root.put("childSummary", "我们来练习「" + topic + "」吧！");
+        PlanLearningHints.ensureChildGoals(root, topic);
         return root.toString();
     }
 

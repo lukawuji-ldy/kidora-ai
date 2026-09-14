@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiJson, setToken } from "@/lib/api";
 
@@ -55,10 +56,19 @@ export default function LoginPage() {
             autoComplete="current-password"
           />
         </div>
+        <p className="hint" style={{ margin: "0 0 0.75rem", opacity: 0.75, fontSize: "0.9rem" }}>
+          演示账号已预填：parent1 / parent123
+        </p>
         {error ? <p className="error">{error}</p> : null}
         <button className="btn" type="submit" disabled={loading}>
           {loading ? "登录中…" : "进入 Kidora"}
         </button>
+        <p style={{ marginTop: "1rem", fontSize: "0.9rem" }}>
+          还没有账号？{" "}
+          <Link href="/register" style={{ textDecoration: "underline" }}>
+            注册账号
+          </Link>
+        </p>
       </form>
     </main>
   );

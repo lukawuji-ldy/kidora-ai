@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:unit": "tsx --test src/lib/vadGate.test.ts src/lib/tutorVoiceGate.test.ts src/lib/api.test.ts src/lib/lessonProps.test.ts"
   },
   "dependencies": {
     "react": "^19.0.0",
@@ -20,6 +21,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
-    "@eslint/eslintrc": "^3"
+    "@eslint/eslintrc": "^3",
+    "tsx": "^4.19.2"
   }
 }

@@ -53,9 +53,13 @@ CET 路径必须以 `learner_id` 为画像主键；不可仅用家长 `user_id` 
 }
 ```
 
+**建档（前台注册）：** 儿童昵称 → `display_name`（Tutor 称呼）；「英语水平」四档 → `cefr_level`（A0/A1/A2/B1）；`age_band` 可空。详见 [2026-09-14-cet-web-register-learner-design.md](superpowers/specs/2026-09-14-cet-web-register-learner-design.md)。
+
+**个人中心维护：** `/settings` 可添加儿童、改昵称/英语水平、软删除（至少保留一名 ACTIVE）。见 [2026-09-14-web-personal-center-design.md](superpowers/specs/2026-09-14-web-personal-center-design.md)。
+
 | 字段组 | 写入时机 | MVP |
 |---|---|---|
-| CEFR / 年龄段 | 建档 + 定期重估 | 1 基础 / 3 自动 |
+| CEFR / 年龄段 | 建档（注册映射 CEFR；`age_band` 可选）+ 定期重估 | 1 基础 / 3 自动 |
 | 语法错 / 发音弱点 | Evaluator / 结课 | 3（`extra_json` 已写） |
 | 已知词汇 | 结课合并 | 3（已写） |
 | 偏好 | 家长设置或行为推断 | 1 / 3 |

@@ -55,6 +55,7 @@
 - 敏感项禁止提交到 Git；库中存密文，解密密钥用环境变量。
 - 禁止代码硬编码模型名与大段系统/用户 Prompt。
 - **提示词语言**：`prompt_template` / `prompt_template_version` 的 `name` 与 `content` **须为中文**（种子、管理台编辑与发布均适用）；`{{var}}` 占位符、JSON 键名与枚举（如 `ALLOW`）可保留协议英文。
+- **提示词 Flyway 发版（强制）**：变更线上 Prompt 时必须走版本表，禁止对当前 `published_version` 行原地覆盖 `content`。标准步骤：① 将当前 `PUBLISHED` 行标为 `SUPERSEDED`（保留旧正文）；② `INSERT` 新 `version = published_version + 1` 为 `PUBLISHED`（写清 `change_note`）；③ 更新 `prompt_template.content` 与 `published_version`。运行时仍读 `prompt_template` 线上副本。
 - 各子工程独立 `pom.xml`（无 parent）；版本必须与 [agents.md](../agents.md) 锁定表一致。
 - LLM 依赖：`org.springframework.ai:spring-ai-starter-model-openai`。
 

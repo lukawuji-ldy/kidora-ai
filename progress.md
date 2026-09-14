@@ -1,5 +1,18 @@
 # 进度日志
 
+## 会话：2026-09-13 Checkpoint 存储与后台跟踪
+
+### 方案 1（ReactAgent + PostgresSaver + 管理台回放）
+- **状态：** complete
+- 执行的操作：
+  - `schema/24_agent_checkpoint.sql` + Flyway `V19__agent_checkpoint.sql`（`GraphThread` / `GraphCheckpoint`）
+  - `CheckpointSaverFactory` + `KidoraAgentProperties.checkpoint`；`AgentFactory` 实装有界 ReactAgent（本期无工具）
+  - `ChatFacade` → `ReactAgent.streamMessages`，`threadId=userId:sessionId`；保留 `chat_message`
+  - manage：`/api/admin/logs/checkpoints/**` + `CheckpointsView`（`/logs/checkpoints`）
+  - docs：agent-flow / database-design / architecture / admin-design / AGENTS
+- 验收：`CheckpointSaverFactoryTest` / `AgentFactoryTest` / `AgentStreamBridgeTest`；manage `AdminCheckpoint*Test` 绿
+- **下一步：** 启动 agent-server 跑通一次 Chat 后在管理台验证线程回放；可选挂 MCP 工具环
+
 ## 会话：2026-09-10（续）MVP-3 + 词典 + MVP-2 收口
 
 ### Phase 0–4

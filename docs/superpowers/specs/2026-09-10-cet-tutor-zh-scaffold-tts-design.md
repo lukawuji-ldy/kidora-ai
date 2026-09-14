@@ -2,7 +2,7 @@
 
 - **日期：** 2026-09-10
 - **仓库：** `kidora-ai`
-- **状态：** Draft（待用户审阅规格后 Accepted）
+- **状态：** Superseded（练习轮语言口径）→ [2026-09-11-cet-en-primary-scaffold-design.md](./2026-09-11-cet-en-primary-scaffold-design.md)；**TTS 剥括号规则仍有效**
 - **关联：** `cet.tutor.system` / `cet.tutor.opening.system`；`CetLessonService.speakableForTts`；既有 V9/V10 对话 UX 与 TTS 迁移
 
 ## 1. 背景与目标
@@ -78,10 +78,10 @@
 - 气泡：`说得不错！你可以说 "My dog is white"。What color is your dog? (你的狗是什么颜色？)`
 - TTS：`说得不错！你可以说 "My dog is white"。What color is your dog?`
 
-**实现说明：** 现有 `CetLessonService.speakableForTts` 正则已剥含汉字的括号并保留其余正文，行为与本节一致。需更新：
+**实现说明：** 现有 `CetLessonService.speakableForTts` 正则已剥含汉字的括号并保留其余正文，行为与本节一致。已落地：
 
 - 方法 / `buildSpeechExtras` 的 Javadoc（废弃「TTS 只读英文主句」口径）
-- V10 相关文档与 Prompt 中「系统朗读会去掉括号中文 / 朗读主句必须是英文」等过时表述
+- V12 Prompt 迁移与相关文档（含 V10 过时表述清理）
 - 单测：覆盖「中文脚手架 + 英文例句 + 括号注释」→ TTS 不含括号、保留中文与英文
 
 ## 4. Prompt 变更

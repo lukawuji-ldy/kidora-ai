@@ -130,5 +130,15 @@
 
 权威清单见 [docs/mcp-design.md](docs/mcp-design.md)。
 
+## CET 听感延迟（2026-09-11）
+
+- 埋点：`cet_tutor_turn.timing_json` + SSE `turn.timing` + client `e2eHeardMs` 已落地。
+- 早期 voice N=6：`ttsReady` p50≈25s；tutor≈11s、safety≈7.4s（≈0.68×tutor）、tts≈3.1s、score≈1.7s；e2e−ready gap≈0.3s。
+- P0/O3：`speechExtrasFlux` 使 `audio.tts` 先于 pronunciation，`ttsReadyMs` 不含 score。
+- O1：`L0_FAST_ALLOW` / `L0_OUT_SKIP_MODEL` 已落地，减少双 Safety LLM；O2 流式 TTS 仍延后。
+- **Tutor 选模（2026-09-11）：** `cet-tutor-server` 配置 `kidora.model.caller-config-ids.CET_TUTOR=llm_chat_primary`（管理台 deepseek-flash）；Safety/Planner/Eval 仍 `llm_primary`。改配置后需重启 CET。连通冒烟：`KIDORA_LLM_SMOKE=1` 跑 `LlmChatPrimarySmokeTest`。
+- **冒烟结果：** 路由已命中 `llm_chat_primary` / `deepseek-flash`；真实调用曾 **HTTP 404**。库中 `base_url=https://api.deepseek.com/v1` 易与 Spring AI 默认 `/v1/chat/completions` 叠成双 `/v1`；且官网模型 id 需确认 `deepseek-flash` 是否有效（常见为 `deepseek-chat`）。请在管理台改 base 为 `https://api.deepseek.com`、核对 model 后重启再测。
+- 详见 [gate-analysis](docs/superpowers/specs/2026-09-11-cet-turn-latency-gate-analysis.md)、[o1-safety](docs/superpowers/specs/2026-09-11-cet-turn-latency-o1-safety-design.md)。
+
 ---
 *权威决策以 [agents.md](agents.md) 与 [task_plan.md](task_plan.md) 为准；本文件为调研沉淀。*

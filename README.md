@@ -58,12 +58,19 @@ java -jar cet-tutor-server/target/cet-tutor-server-1.0.0-SNAPSHOT.jar
 | API | 说明 |
 |---|---|
 | `POST :8080/api/auth/login` | 家长 JWT |
-| `GET  :8080/api/learners` | 学习者列表 |
+| `GET  :8080/api/learners` | 学习者列表（含 englishLevel） |
+| `POST :8080/api/learners` | 添加儿童 |
+| `PATCH :8080/api/learners/{id}` | 编辑儿童昵称/水平 |
+| `DELETE :8080/api/learners/{id}` | 软删除儿童（至少保留一名） |
+| `GET/PATCH :8080/api/auth/me` | 家长资料查询 / 改昵称 |
+| `POST :8080/api/auth/password` | 修改密码 |
 | `POST :8080/api/chat/sessions` (+ stream) | 通用 Chat |
 | `POST :8082/api/cet/sessions` | 开课（同步 planSummary） |
 | `POST :8082/api/cet/sessions/{id}/stream` | Tutor SSE（先检后发） |
 | `POST :8082/api/cet/sessions/{id}/complete` | 结课评测 |
-| `GET  :8082/api/cet/sessions/{id}/report` | 儿童摘要 |
+| `GET  :8082/api/cet/sessions/{id}/report` | 家长学习报告（含 parentSummary / assessment） |
+| `DELETE :8082/api/cet/sessions/{id}` | 硬删除单条上课记录 |
+| `POST :8082/api/cet/sessions/batch-delete` | 硬删除批量上课记录 |
 
 ### MCP 工具服务（stub | azure）
 

@@ -26,6 +26,7 @@ import org.springframework.context.annotation.Import;
         LlmCallAuditor.class,
         ModelRouter.class,
         PromptTemplateService.class,
+        com.wuji.kidora.ai.agent.checkpoint.CheckpointSaverFactory.class,
         com.wuji.kidora.ai.agent.chat.ChatSessionRepository.class,
         com.wuji.kidora.ai.agent.chat.ChatMessageRepository.class,
         com.wuji.kidora.ai.agent.chat.ChatFacade.class,

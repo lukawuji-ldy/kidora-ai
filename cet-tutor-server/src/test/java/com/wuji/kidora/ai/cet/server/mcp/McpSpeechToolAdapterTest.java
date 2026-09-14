@@ -10,6 +10,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -31,9 +32,32 @@ class McpSpeechToolAdapterTest {
     }
 
     @Test
+    void parseAsr_unwrapsMcpContentList() {
+        McpSpeechToolAdapter adapter = new McpSpeechToolAdapter(emptyProviders(), mapper);
+        String wrapped = "[{\"type\":\"text\",\"text\":\"{\\\"text\\\":\\\"Hello.\\\",\\\"confidence\\\":0.99,\\\"provider\\\":\\\"stub\\\"}\"}]";
+        var result = adapter.parseAsr(wrapped);
+        assertTrue(result.isPresent());
+        assertEquals("Hello.", result.get().text());
+        assertEquals("stub", result.get().provider());
+    }
+
+    @Test
     void parseAsr_errorEmpty() {
         McpSpeechToolAdapter adapter = new McpSpeechToolAdapter(emptyProviders(), mapper);
         assertTrue(adapter.parseAsr("{\"error\":{\"code\":\"MISSING_AUDIO\"},\"provider\":\"stub\"}").isEmpty());
+    }
+
+    @Test
+    void extractErrorMessage_fromVendorPayload() {
+        McpSpeechToolAdapter adapter = new McpSpeechToolAdapter(emptyProviders(), mapper);
+        assertEquals("MISSING_AUDIO: audio required",
+                adapter.extractErrorMessage(
+                        "{\"error\":{\"code\":\"MISSING_AUDIO\",\"message\":\"audio required\"},\"provider\":\"stub\"}"));
+    }
+
+    @Test
+    void preview_truncates() {
+        assertEquals("abcdef...", McpSpeechToolAdapter.preview("abcdefghij", 6));
     }
 
     @Test
@@ -44,6 +68,15 @@ class McpSpeechToolAdapterTest {
         assertEquals("audio/wav", tts.get().mimeType());
         var score = adapter.parseScore(
                 "{\"overall\":85.0,\"accuracy\":88.0,\"fluency\":82.0,\"completeness\":90.0,\"provider\":\"stub\"}");
+        assertTrue(score.isPresent());
+        assertEquals(85.0, score.get().overall());
+    }
+
+    @Test
+    void parseScore_unwrapsMcpContentList() {
+        McpSpeechToolAdapter adapter = new McpSpeechToolAdapter(emptyProviders(), mapper);
+        String wrapped = "[{\"type\":\"text\",\"text\":\"{\\\"overall\\\":85.0,\\\"accuracy\\\":88.0,\\\"fluency\\\":82.0,\\\"completeness\\\":90.0,\\\"provider\\\":\\\"stub\\\"}\"}]";
+        var score = adapter.parseScore(wrapped);
         assertTrue(score.isPresent());
         assertEquals(85.0, score.get().overall());
     }
@@ -69,8 +102,71 @@ class McpSpeechToolAdapterTest {
     }
 
     @Test
+    void findTool_matchesPrefixedDefinitionName() {
+        ToolCallback callback = new ToolCallback() {
+            @Override
+            public ToolDefinition getToolDefinition() {
+                return ToolDefinition.builder()
+                        .name("kidoramcpserver_asr_transcribe")
+                        .description("asr")
+                        .inputSchema("{}")
+                        .build();
+            }
+
+            @Override
+            public String call(String toolInput) {
+                return "[]";
+            }
+        };
+        ToolCallbackProvider mcpNamed = new FakeMcpToolCallbackProvider(callback);
+        McpSpeechToolAdapter adapter = new McpSpeechToolAdapter(singletonProvider(mcpNamed), mapper);
+        assertEquals(callback, adapter.findTool("asr_transcribe"));
+    }
+
+    @Test
+    void matchesTool_exactAndSuffix() {
+        ToolCallback exact = namedCallback("asr_transcribe");
+        ToolCallback prefixed = namedCallback("client_asr_transcribe");
+        assertTrue(McpSpeechToolAdapter.matchesTool(exact, "asr_transcribe"));
+        assertTrue(McpSpeechToolAdapter.matchesTool(prefixed, "asr_transcribe"));
+        assertFalse(McpSpeechToolAdapter.matchesTool(exact, "tts_synthesize"));
+    }
+
+    @Test
     void isMcpProvider_detectsByClassName() {
         assertTrue(McpSpeechToolAdapter.isMcpProvider(new FakeMcpToolCallbackProvider(null)));
+    }
+
+    @Test
+    void escape_encodesNewlinesAndQuotes() {
+        assertEquals("a\\nb", McpSpeechToolAdapter.escape("a\nb"));
+        assertEquals("a\\rb\\tc", McpSpeechToolAdapter.escape("a\rb\tc"));
+        assertEquals("say \\\"hi\\\"", McpSpeechToolAdapter.escape("say \"hi\""));
+        assertEquals("a\\\\b", McpSpeechToolAdapter.escape("a\\b"));
+    }
+
+    @Test
+    void buildTtsArgs_multilineChineseIsValidJson() throws Exception {
+        String text = "Hi! I'm Emma. Good evening!\n你好！今天我们来聊聊动物。\nDo you have a pet?";
+        String json = McpSpeechToolAdapter.buildTtsArgs(text, "602005", null);
+        var node = mapper.readTree(json);
+        assertEquals(text, node.path("text").asText());
+        assertEquals("602005", node.path("voice").asText());
+        assertFalse(json.contains("\n"));
+    }
+
+    private static ToolCallback namedCallback(String name) {
+        return new ToolCallback() {
+            @Override
+            public ToolDefinition getToolDefinition() {
+                return ToolDefinition.builder().name(name).description("d").inputSchema("{}").build();
+            }
+
+            @Override
+            public String call(String toolInput) {
+                return "{}";
+            }
+        };
     }
 
     private static ObjectProvider<ToolCallbackProvider> emptyProviders() {

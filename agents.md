@@ -95,10 +95,10 @@ kidora-mcp-server ──► kidora-common
 
 | 模块 | 类型 | 一句话职责 |
 |---|---|---|
-| `kidora-agent-server` | Boot | Auth JWT、通用 Chat SSE、`/api/learners`、Flyway |
+| `kidora-agent-server` | Boot | Auth JWT（login/register/me/password）、通用 Chat SSE、`/api/learners` CRUD、Flyway |
 | `kidora-mcp-server` | Boot | 按 MCP 规范暴露 Tool，独立部署（:8081；`stub|azure`） |
 | `cet-tutor-server` | Boot | CET 开课/陪练/报告 API；装配 `cet-tutor-core` |
-| `kidora-agent-core` | jar | ModelRouter / Prompt / 审计 / ChatFacade（AgentFactory 空壳） |
+| `kidora-agent-core` | jar | ModelRouter / Prompt / 审计 / ChatFacade / AgentFactory（ReactAgent + Checkpoint） |
 | `kidora-memory` | jar | 学习者画像读写、语义记忆短事实、结课 Memory Action |
 | `kidora-rag` | jar | 课程文档入库与检索（分期） |
 | `kidora-common` | jar | 跨模块公共类型与约定 |
@@ -118,7 +118,7 @@ kidora-mcp-server ──► kidora-common
 3. **CET 循环边界**：Plan-and-Execute **仅**用于课程/训练「大循环」；实时陪练走 Tutor「小循环」。**禁止**孩子每说一句就同步完整 Re-plan。细则见 [docs/cet-tutor-design.md](docs/cet-tutor-design.md)。
 4. **Safety**：儿童场景必须有独立 Safety 闸门（输入/输出），禁止仅靠系统 Prompt 一句「你是儿童老师」。见 [docs/cet-safety-design.md](docs/cet-safety-design.md)。
 5. **MCP**：Server 独立进程；与 Agent 服务无强耦合；Client 使用 WebFlux + SSE。跨 Server 工具名冲突 fail-fast。见 [docs/mcp-design.md](docs/mcp-design.md)。
-6. **对外 API**：WebFlux；流式用 SSE。阻塞 LLM/JDBC 必须在有界线程池隔离，**禁止阻塞 event-loop**。身份以 **User JWT** 为准，**禁止信任前端传入的 userId**。本仓库不暴露 `/api/admin/**`。
+6. **对外 API**：WebFlux；流式用 SSE。阻塞 LLM/JDBC 必须在有界线程池隔离，**禁止阻塞 event-loop**。身份以 **User JWT** 为准，**禁止信任前端传入的 userId**。未认证/无权限须返回统一 `ApiResponse` JSON（禁止空 body 401）。本仓库不暴露 `/api/admin/**`。
 7. **存储**：结构化数据一律 **PostgreSQL**（与管理工程共享库 **`kidora_ai`**，表空间 **`ts_kidora`**；开发 JDBC 见 [docs/database-design.md](docs/database-design.md)）。用户/学习者数据按 `user_id`（及儿童档案 id）隔离。**不使用 MySQL。**
 8. **记忆**：禁止把全部对话原样写入长期记忆；以结构化 Action + 冲突解决落库。Learner Profile 字段约定见 [docs/agent-memory.md](docs/agent-memory.md)。
 9. **入模审计**：每次 LLM 调用完整参数写入审计表（如 `llm_call_log`）。
@@ -165,6 +165,10 @@ kidora-mcp-server ──► kidora-common
 | [docs/coding-standard.md](docs/coding-standard.md) | Java / Spring / 日志 / 测试 / Javadoc `@author liudy` / 文档同步 / **版本控制（禁功能分支）** |
 | [docs/mcp-design.md](docs/mcp-design.md) | MCP Server、CET 工具清单与分期 |
 | [docs/cet-tutor-design.md](docs/cet-tutor-design.md) | CET 总设计：大/小循环与多 Agent |
+| [docs/superpowers/specs/2026-09-14-cet-web-register-learner-design.md](docs/superpowers/specs/2026-09-14-cet-web-register-learner-design.md) | 前台注册 + 儿童昵称 / 英语水平 |
+| [docs/superpowers/specs/2026-09-14-web-personal-center-design.md](docs/superpowers/specs/2026-09-14-web-personal-center-design.md) | 个人中心：家长资料 + 儿童增改/软删除 |
+| [docs/superpowers/specs/2026-09-14-cet-prop-realtime-stage-design.md](docs/superpowers/specs/2026-09-14-cet-prop-realtime-stage-design.md) | 教具舞台：后端权威 + SSE `turn.prop` 实时下发；素材来源/许可管理 |
+| [scripts/props/README.md](scripts/props/README.md) | 道具素材离线导入、许可白名单与体检脚本 |
 | [docs/cet-lesson-flow.md](docs/cet-lesson-flow.md) | 开课到结课的课时流程 |
 | [docs/cet-safety-design.md](docs/cet-safety-design.md) | 儿童安全闸门与 HITL |
 | [docs/cet-assessment-design.md](docs/cet-assessment-design.md) | 评测维度与家长报告 |
@@ -193,7 +197,7 @@ kidora-mcp-server ──► kidora-common
 | **MVP-2B2** | kidora-web 录音/播放闭环 | 课程 RAG 生产化 |
 | **MVP-2**（总） | MCP：ASR / TTS / 发音评测；语音闭环 | 课程 RAG 生产化 |
 | **MVP-3** | Evaluator 驱动 Re-Planner；长期 Learner Profile；词典 MCP | 完整家长 HITL 产品 |
-| **MVP-4** | 家长报告 + HITL；管理台 CET 运营页 | — |
+| **MVP-4** | 家长报告首版（页 + parentSummary）；HITL / 管理台 CET 运营页分期 | — |
 | **MVP-5** | `kidora-rag`；更多产品线挂载 | — |
 
 后台管理：旁路 `kidora-ai-manage`。

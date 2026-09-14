@@ -1,21 +1,31 @@
 package com.wuji.kidora.ai.agent.chat;
 
+import com.alibaba.cloud.ai.graph.RunnableConfig;
+import com.alibaba.cloud.ai.graph.agent.ReactAgent;
+import com.wuji.kidora.ai.agent.AgentFactory;
 import com.wuji.kidora.ai.agent.config.KidoraAgentProperties;
+import com.wuji.kidora.ai.agent.model.LlmCallAuditor;
 import com.wuji.kidora.ai.agent.model.ModelRouter;
+import com.wuji.kidora.ai.agent.prompt.KidoraSystemPromptInterceptor;
 import com.wuji.kidora.ai.agent.prompt.PromptTemplateService;
+import com.wuji.kidora.ai.agent.stream.AgentStreamBridge;
 import com.wuji.kidora.ai.common.exception.ErrorCode;
 import com.wuji.kidora.ai.common.exception.KidoraException;
 import com.wuji.kidora.ai.common.util.IdGenerator;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
- * 通用 Chat 门面：短窗 + ChatClient 流式，无工具环。
+ * 通用 Chat 门面：短窗 + 有界 ReactAgent 流式（PostgresSaver Checkpoint），无工具环。
  *
  * @author liudy
  */
@@ -26,17 +36,23 @@ public class ChatFacade {
     private final ChatMessageRepository messageRepository;
     private final PromptTemplateService promptTemplateService;
     private final ModelRouter modelRouter;
+    private final AgentFactory agentFactory;
+    private final LlmCallAuditor llmCallAuditor;
     private final KidoraAgentProperties agentProperties;
 
     public ChatFacade(ChatSessionRepository sessionRepository,
                       ChatMessageRepository messageRepository,
                       PromptTemplateService promptTemplateService,
                       ModelRouter modelRouter,
+                      AgentFactory agentFactory,
+                      LlmCallAuditor llmCallAuditor,
                       KidoraAgentProperties agentProperties) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.promptTemplateService = promptTemplateService;
         this.modelRouter = modelRouter;
+        this.agentFactory = agentFactory;
+        this.llmCallAuditor = llmCallAuditor;
         this.agentProperties = agentProperties;
     }
 
@@ -66,19 +82,28 @@ public class ChatFacade {
 
         int window = agentProperties.getChatWindowSize();
         List<ChatMessageRepository.MessageRow> recent = messageRepository.listRecent(sessionId, window);
-        String history = recent.stream()
-                .map(m -> m.role() + ": " + m.content())
-                .collect(Collectors.joining("\n"));
 
         String system = promptTemplateService.loadAndRender("chat.system", Map.of(),
                 "You are Kidora assistant. Be helpful, concise, and family-friendly.");
-        String user = promptTemplateService.loadAndRender("chat.user",
-                Map.of("history", history, "text", userText.trim()),
-                "Conversation:\n{{history}}\n\nUser: {{text}}\nAssistant:");
+
+        // 仅 user/assistant 进入 ReactAgent messages；system 走 metadata
+        List<Message> messages = new ArrayList<>();
+        for (ChatMessageRepository.MessageRow m : recent) {
+            if ("user".equalsIgnoreCase(m.role())) {
+                messages.add(new UserMessage(m.content() == null ? "" : m.content()));
+            } else if ("assistant".equalsIgnoreCase(m.role())) {
+                messages.add(new AssistantMessage(m.content() == null ? "" : m.content()));
+            }
+        }
+        // listRecent 已含刚写入的 user；若裁剪导致缺失则补上
+        if (messages.isEmpty() || !(messages.get(messages.size() - 1) instanceof UserMessage)) {
+            messages.add(new UserMessage(userText.trim()));
+        }
 
         String messageId = IdGenerator.nextBizId("msg_");
+        String traceId = IdGenerator.nextBizId("tr_");
         ModelRouter.CallContext ctx = new ModelRouter.CallContext(
-                IdGenerator.nextBizId("tr_"),
+                traceId,
                 sessionId,
                 messageId,
                 userId,
@@ -88,11 +113,57 @@ public class ChatFacade {
                 "CHAT"
         );
 
-        return modelRouter.streamText(ctx, system, user, full -> {
-            messageRepository.insert(sessionId, userId, "assistant",
-                    full == null ? "" : full, "COMPLETED");
-            sessionRepository.touchAndIncrement(sessionId, 1);
-        });
+        ModelRouter.RoutedClient routed = modelRouter.requireForCaller("CHAT");
+        ReactAgent agent = agentFactory.getOrCreate(routed.configId());
+        RunnableConfig runnableConfig = RunnableConfig.builder()
+                .threadId(userId + ":" + sessionId)
+                .addMetadata(KidoraSystemPromptInterceptor.META_SYSTEM_PROMPT, system)
+                .build();
+
+        long start = System.currentTimeMillis();
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("system", system);
+        request.put("user", userText.trim());
+        request.put("bizCaller", "CHAT");
+        request.put("threadId", userId + ":" + sessionId);
+        StringBuilder full = new StringBuilder();
+
+        Flux<String> deltas;
+        try {
+            deltas = AgentStreamBridge.toContentDeltas(agent.streamMessages(messages, runnableConfig));
+        } catch (Exception ex) {
+            throw AgentFactory.mapLimitException(ex);
+        }
+
+        return deltas
+                .doOnNext(chunk -> {
+                    if (chunk != null) {
+                        full.append(chunk);
+                    }
+                })
+                .doOnComplete(() -> {
+                    String text = full.toString();
+                    int latency = (int) (System.currentTimeMillis() - start);
+                    llmCallAuditor.record(new LlmCallAuditor.AuditParams(
+                            ctx.traceId(), ctx.sessionId(), ctx.messageId(), ctx.userId(), ctx.learnerId(),
+                            ctx.bizSource(), ctx.bizRefId(),
+                            routed.config().getModel(), routed.config().getProvider(),
+                            1, routed.fallback(), "SUCCESS", null, latency, null, null,
+                            request, Map.of("content", text)));
+                    messageRepository.insert(sessionId, userId, "assistant", text, "COMPLETED");
+                    sessionRepository.touchAndIncrement(sessionId, 1);
+                })
+                .doOnError(e -> {
+                    Throwable mapped = AgentFactory.mapLimitException(e);
+                    int latency = (int) (System.currentTimeMillis() - start);
+                    llmCallAuditor.record(new LlmCallAuditor.AuditParams(
+                            ctx.traceId(), ctx.sessionId(), ctx.messageId(), ctx.userId(), ctx.learnerId(),
+                            ctx.bizSource(), ctx.bizRefId(),
+                            routed.config().getModel(), routed.config().getProvider(),
+                            1, routed.fallback(), "FAILED", mapped.getClass().getSimpleName(), latency, null, null,
+                            request, Map.of("error", String.valueOf(mapped.getMessage()))));
+                })
+                .onErrorMap(AgentFactory::mapLimitException);
     }
 
     /**

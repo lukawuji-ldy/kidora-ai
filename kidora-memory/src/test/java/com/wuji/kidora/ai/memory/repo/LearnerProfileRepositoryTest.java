@@ -31,4 +31,12 @@ class LearnerProfileRepositoryTest {
         LearnerProfile loaded = LearnerProfileRepository.assertOwned(profile, "u_demo");
         assertEquals("lrn_1", loaded.learnerId());
     }
+
+    @Test
+    void insertRejectsBlankArgs() {
+        LearnerProfileRepository repo = new LearnerProfileRepository(null);
+        KidoraException ex = assertThrows(KidoraException.class,
+                () -> repo.insert("", "u_1", "Kid", null, "A1", "emma"));
+        assertEquals(ErrorCode.BAD_REQUEST, ex.getErrorCode());
+    }
 }

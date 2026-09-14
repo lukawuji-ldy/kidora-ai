@@ -16,6 +16,8 @@
 
 输出必须含 **encouragement** 字段；禁止羞辱性表述（Safety 输出侧再检）。
 
+**儿童摘要（V22）**：`childSummary`（中文）必须含 1～2 条「孩子原话 → 正确说法」的具体改写；`problems` 须摘录真实错句；禁止只有「还有提升空间」类空话。`encouragement` 可短夸，不得替代带错例的摘要。Flyway：`V22__cet_prompt_props_repeat_eval.sql`。详见 [2026-09-13-cet-prompt-v22-props-repeat-eval-design.md](superpowers/specs/2026-09-13-cet-prompt-v22-props-repeat-eval-design.md)。
+
 ---
 
 ## 2. 粒度
@@ -60,9 +62,12 @@ Re-Planner 生成新 `cet_training_plan` 并写 `cet_training_plan_revision`（*
 |---|---|---|
 | 语气 | 鼓励、徽章、简单星星 | 清晰分数与建议 |
 | 内容 | 「你学会了…」「下次试试…」 | 错因、词汇表、练习建议、安全摘要 |
-| MVP | 1 摘要 | 4 完整 |
+| MVP | 1 摘要 | **4 首版已落地**：`parentSummary` + 结构化 `assessment`；页面 `/cet/report/[id]`；HITL / 安全摘要仍分期 |
 
-同一 `cet_session_report` 可用 JSON 分 `childView` / `parentView`。
+同一 `cet_session_report`：`child_summary` / `parent_summary` + `report_json`（评测 JSON，可含 `childView`/`parentView` 扩展）。
+结课写入：`SessionEvaluator` 解析或合成 `parentSummary`；`GET /api/cet/sessions/{id}/report` 返回 `parentSummary`、`assessment`、`topic`、`learnerName`、`cefrLevel`、`completedAt`。
+老课次无 `parent_summary` 时服务端按 scores/`problems`/`focus` 拼接兜底。
+Flyway：`V28__cet_eval_parent_summary.sql`。
 
 ---
 
@@ -85,4 +90,6 @@ Re-Planner 生成新 `cet_training_plan` 并写 `cet_training_plan_revision`（*
 1. 故意语法错误能稳定出现在 `problems`。
 2. 鼓励字段非空且通过 Safety。
 3. `replan` 信号能被课时状态机消费（**已落地**：`EVALUATING→REPLANNING→PRACTICING`）。
-4. 家长报告无儿童不可理解的原始模型 dump（MVP-4）。
+4. 家长报告无儿童不可理解的原始模型 dump（MVP-4 首版：页面渲染结构化字段 + `parentSummary`，不展示 raw dump）。
+5. 结课 `childSummary` 至少含一条「原话 → 正确说法」（V22）。
+6. 结课 `parentSummary` 非空（LLM 或规则合成）；报告 API 含课次元数据。

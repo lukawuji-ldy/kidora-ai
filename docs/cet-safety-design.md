@@ -42,6 +42,16 @@ Safety 是**独立系统级约束**，不是一句系统 Prompt。总设计见 [
 - Tutor **输出先完整生成 → L2 闸门 → 再按块 SSE**，避免不安全 token 先泄漏到客户端。
 - 事件 `detail_json` 写入 `policyVersion`（如 `cet-safety-v1`）；应用日志不含完整敏感原文。
 - stream API 使用 `Flux.defer` + 有界调度器，JDBC/输入 Safety/同步 LLM 离开 event-loop。
+
+**已落地（听感 O1，2026-09-11）：** 在保留 HARD/SOFT L0 与 fail-closed 的前提下，减少听感路径上不必要的 Safety LLM：
+
+| eventType | 方向 | 含义 |
+|---|---|---|
+| `L0_FAST_ALLOW` | INPUT | 课堂安全短答（长度≤80、安全字符集、yes/no / `I like…` / `My…is…` / 颜色动物词 / 极短英文）→ **跳过**入站模型 |
+| `L0_OUT_SKIP_MODEL` | OUTPUT | 短鼓励脚手架（长度≤220、无 URL/邮箱/电话、鼓励+问句或中英脚手架带问句）→ **跳过**出站模型 |
+
+未命中快路径时仍走 L1/L2 模型。`timing_json.skipped.safetyInModel` / `safetyOutModel` 在 `eventType` 以 `L0_` 开头时为 true。详见 [O1 规格](superpowers/specs/2026-09-11-cet-turn-latency-o1-safety-design.md)。
+
 ---
 
 ## 4. 动作

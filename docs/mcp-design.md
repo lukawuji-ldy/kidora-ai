@@ -75,7 +75,7 @@ kidora-mcp-server (:8081)
 
 本地/CI：`kidora.speech.mode=stub`。生产联调：`mode=db` + 管理台写入凭证密文（`SecretCipher` / `KIDORA_API_KEY_SECRET`）。
 
-腾讯 TTS（`TextToVoice`）使用 API 3.0 **TC3-HMAC-SHA256**。讯飞整栈走控制台**流式 WebSocket**（旧版 HTTP `api.xfyun.cn/v1/service/v1/*` 已弃用）：ASR `wss://iat-api.xfyun.cn/v2/iat`、TTS `wss://tts-api.xfyun.cn/v2/tts`、ISE `wss://ise-api.xfyun.cn/v2/open-ise`；握手鉴权 HMAC-SHA256（`apiKey`+`apiSecret`，与管理台 `IflytekWsAuth` 一致）；凭证 JSON 须含 `appId`+`apiKey`+`apiSecret`；WAV 去 44 字节头后按 pcm raw 分片；**mp3 自动 `encoding/aue=lame`**；**拒收 m4a**；TTS 默认发音人 `x4_xiaoyan`；TTS 每帧 `data.audio` **独立 base64 逐帧 decode 再拼字节**（不可拼接 base64 字符串）；失败透出厂商 `code`/`message`。JDK `HttpClient` WebSocket 文本帧须按 `last` 拼完整消息再 `readTree`（TTS/ISE 大段 base64 常在 ~4KB 处拆帧，否则 `JsonEOFException`）。腾讯 ASR 极速版：query 含 `secretid`/`timestamp`，`voice_format` 为字符串（`wav`/`mp3`/`m4a`/`pcm`），Authorization 为 `POST`+路径+排序 query 的 HMAC-SHA1。腾讯 SOE：`voice_format` 为 0/1/2（pcm/wav/mp3）；签名原文为**未编码**字典序 query，请求 URL 再对 value/`signature` 做百分号编码（空格 `%20`）；WebSocket **须等服务端 code=0 握手包后再发 binary**，音频发完再发文本帧 `{"type":"end"}`，最后等 `final=1`（`onOpen` 立即发音频会被丢弃并触发 4008「超过15秒未发送音频数据」）；并解析 `result` 文本型分数。凭证 JSON：`{"secretId","secretKey","appId"}`，其中 `appId` 须为 [API 密钥管理](https://console.cloud.tencent.com/cam/capi) 页的 **AppId**（通常 10 位如 `1255…`），**禁止**填账号 ID/Uin（常见 `1000…` 开头）；TTS 仅用 SecretId/Key，ASR/SOE 路径含 AppId。
+腾讯 TTS（`TextToVoice`）使用 API 3.0 **TC3-HMAC-SHA256**；`Codec=mp3`（`mimeType=audio/mpeg`），减小经 MCP SSE 回传的音频体积，避免中英混合开场在默认超时内卡住。讯飞整栈走控制台**流式 WebSocket**（旧版 HTTP `api.xfyun.cn/v1/service/v1/*` 已弃用）：ASR `wss://iat-api.xfyun.cn/v2/iat`、TTS `wss://tts-api.xfyun.cn/v2/tts`、ISE `wss://ise-api.xfyun.cn/v2/open-ise`；握手鉴权 HMAC-SHA256（`apiKey`+`apiSecret`，与管理台 `IflytekWsAuth` 一致）；凭证 JSON 须含 `appId`+`apiKey`+`apiSecret`；WAV 去 44 字节头后按 pcm raw 分片；**mp3 自动 `encoding/aue=lame`**；**拒收 m4a**；TTS 默认发音人 `x4_xiaoyan`；TTS 每帧 `data.audio` **独立 base64 逐帧 decode 再拼字节**（不可拼接 base64 字符串）；失败透出厂商 `code`/`message`。JDK `HttpClient` WebSocket 文本帧须按 `last` 拼完整消息再 `readTree`（TTS/ISE 大段 base64 常在 ~4KB 处拆帧，否则 `JsonEOFException`）。腾讯 ASR 极速版：query 含 `secretid`/`timestamp`，`voice_format` 为字符串（`wav`/`mp3`/`m4a`/`pcm`），`engine_type` 按 locale 映射（`en*`/`缺省`→`16k_en`，`zh*`→`16k_zh`）；Authorization 为 `POST`+路径+排序 query 的 HMAC-SHA1。**弱转写静默回退：** 主引擎结果过短/功能词垃圾（如 `The.`）时，同一音频再调另一语种引擎（腾讯 `16k_zh`↔`16k_en`；讯飞 `zh_cn`↔`en_us`），取更合理文本；孩子无感。发音评测（SOE/ISE）仍固定英文引擎，不回退。腾讯 SOE：`voice_format` 为 0/1/2（pcm/wav/mp3）；签名原文为**未编码**字典序 query，请求 URL 再对 value/`signature` 做百分号编码（空格 `%20`）；WebSocket **须等服务端 code=0 握手包后再发 binary**，音频发完再发文本帧 `{"type":"end"}`，最后等 `final=1`（`onOpen` 立即发音频会被丢弃并触发 4008「超过15秒未发送音频数据」）；并解析 `result` 文本型分数。凭证 JSON：`{"secretId","secretKey","appId"}`，其中 `appId` 须为 [API 密钥管理](https://console.cloud.tencent.com/cam/capi) 页的 **AppId**（通常 10 位如 `1255…`），**禁止**填账号 ID/Uin（常见 `1000…` 开头）；TTS 仅用 SecretId/Key，ASR/SOE 路径含 AppId。
 
 Tool JSON 字段名稳定；响应 `provider` 为实际供应商码（`iflytek`/`tencent`/`stub`）。
 
@@ -91,7 +91,11 @@ Tool JSON 字段名稳定；响应 `provider` 为实际供应商码（`iflytek`/
 | **MVP-2B2** | complete | `kidora-web` 录音/播放消费 SSE |
 | **词典** | complete | `dictionary_lookup`（`kidora.dictionary.mode=stub\|http`） |
 
-CET 侧：`kidora.mcp.enabled=true` 时经 MCP 调工具；**禁止** cet-* 直连云厂商。
+CET 侧：本地默认 `kidora.mcp.enabled=true`（可用环境变量 `KIDORA_MCP_ENABLED=false` 关闭）；经 MCP 调工具；**禁止** cet-* 直连云厂商。Web 录音需本机 `kidora-mcp-server`（`:8081`，`kidora.speech.mode=stub` 即可联调）。
+
+`cet-tutor-server` 与 **`kidora-mcp-server`** 的 `spring.codec.max-in-memory-size` 均须 ≥ `16MB`（见 [architecture.md](architecture.md) §5）：前者收 Web `audioBase64`；后者收 MCP `tools/call` 大包，且 WebClient 读腾讯 TTS 响应。默认 256KB 会分别导致 stream/HTTP 500，或控制台 `DataBufferLimitException: 262144` / `POST /mcp/message` 500 / `Tencent TTS failed`。
+
+`McpSpeechToolAdapter` 须兼容 Spring AI：`SyncMcpToolCallback` 的 **prefixed 工具名**，以及 `call()` 返回的 **CallToolResult.content JSON 数组**（内层 `type=text` 再包一层业务 JSON）；否则 ASR 会落成「未能识别语音」。
 
 ---
 
@@ -162,16 +166,21 @@ cet-tutor-server/…/mcp/
 | `pronunciation_score` | `overall`, `accuracy`, `fluency`, `completeness`, `locale`, `referenceText`, `provider` |
 | `dictionary_lookup` | `word`, `phonetic`, `definitions[]`, `examples[]`, `provider` |
 
+CET 调用 TTS 时：`voice` 来自 `cet_persona_voice`（`persona_id` + `speech_route.primary_vendor` 的 ACTIVE 行；seed：腾讯 × 6 + 讯飞 × 6）；无映射则省略 `voice`，腾讯默认 `101001`、讯飞默认 `x4_xiaoyan`。协议字段不变；cet-* 不直连云厂商。详见 [cet-persona-design.md](cet-persona-design.md) §5.1 / §5.2。
+
 错误：`{"error":{"code":"...","message":"..."},"provider":"stub|azure|iflytek|tencent|http"}`。
 
 ### 10.2 CET stream SSE（2B1）
 
-请求体：`{text?, audioBase64?, locale?, referenceText?}`（text 与 audioBase64 二选一）。
+请求体：`{opening?: true}` **或** `{text?, audioBase64?, locale?, referenceText?}`（陪练轮次：text 与 audioBase64 二选一）。  
+`opening=true`：外教开场（无儿童输入；尚无 turn 时可用），SSE 含 `message.delta*` + 可选 `audio.tts`（无 `pronunciation`）。
 
 | SSE event | 含义 |
 |---|---|
 | `message.delta` | Tutor 文本块（兼容现 Web） |
 | `audio.tts` | TTS JSON |
-| `pronunciation` | 发音评分 JSON（需 audio + referenceText） |
+| `pronunciation` | 发音评分 JSON（需 audio + referenceText；儿童主界面可不展示；**在 audio.tts 之后**下发，不挡听感） |
 | `plan.updated` | 阶段 Re-plan 后新计划摘要（MVP-3） |
+| `session.wrapup` | 告别阶段进度（`phase` / `step`） |
+| `session.completed` | 自动结课完成（含 `childSummary`） |
 | `done` | 结束 |

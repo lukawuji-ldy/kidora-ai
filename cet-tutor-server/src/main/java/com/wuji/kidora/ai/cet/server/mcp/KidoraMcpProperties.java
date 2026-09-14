@@ -11,9 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class KidoraMcpProperties {
 
     /**
-     * 是否启用 MCP Client（默认 false，避免本地无 mcp-server 时启动失败）。
+     * 是否启用 MCP Client（本地默认 true，配合 Web 录音；无 mcp-server 时仍可启动）。
      */
-    private boolean enabled = false;
+    private boolean enabled = true;
 
     /**
      * 空库兜底 base URL。

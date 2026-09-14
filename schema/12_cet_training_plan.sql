@@ -22,7 +22,7 @@ COMMENT ON COLUMN cet_training_plan.plan_id IS '计划业务键';
 COMMENT ON COLUMN cet_training_plan.lesson_session_id IS '所属 cet_lesson_session.lesson_session_id';
 COMMENT ON COLUMN cet_training_plan.learner_id IS '学习者键';
 COMMENT ON COLUMN cet_training_plan.version IS '同会话内版本号；Re-plan 递增（修订历史表 MVP-3）';
-COMMENT ON COLUMN cet_training_plan.plan_json IS '计划 JSON：topic/cefr/persona/objectives/stages';
+COMMENT ON COLUMN cet_training_plan.plan_json IS '计划 JSON：topic/cefr/persona/objectives/stages/childGoals/childSummary';
 COMMENT ON COLUMN cet_training_plan.status IS 'ACTIVE|SUPERSEDED';
 COMMENT ON COLUMN cet_training_plan.create_time IS '创建时间';
 COMMENT ON COLUMN cet_training_plan.update_time IS '更新时间';

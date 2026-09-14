@@ -33,3 +33,7 @@
 \ir 20_speech_route.sql
 \ir 21_cet_training_plan_revision.sql
 \ir 22_learner_semantic_memory.sql
+\ir 23_cet_persona_voice.sql
+\ir 24_agent_checkpoint.sql
+\ir 25_cet_prop_asset.sql
+\ir 26_cet_prop_asset_generation_task.sql

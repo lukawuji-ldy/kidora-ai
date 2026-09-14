@@ -11,6 +11,8 @@
 
 **不是**「LLM + 一个聊天窗口」；要展示多 Agent、Memory、MCP、Safety、（后期）HITL。
 
+教具图与分屏舞台见 [2026-09-14-cet-prop-realtime-stage-design.md](superpowers/specs/2026-09-14-cet-prop-realtime-stage-design.md)：后端 `PropStageDirector` 按外教本轮文本判定，**每轮通过 SSE `turn.prop` 下发**；道具库与取图契约见 [2026-09-13-cet-prop-stage-library-design.md](superpowers/specs/2026-09-13-cet-prop-stage-library-design.md)。
+
 ---
 
 ## 2. 为什么不是纯 Plan-and-Execute
@@ -91,13 +93,18 @@
 
 - 语气极度热情、友爱、口语短句（不堆感叹号）。  
 - 固定三段、只提一个问题：① 英文问候 + 自我介绍（`I'm {{personaName}}` + `{{dayGreeting}}`）→ ② 中文点题（主题英文可放括号）→ ③ **英文下一问 + 括号中文**。  
+- 开场下一问默认优先 `Look!` / `Look, is this … or …?` / `What is this?`（点出本课实体）；避免默认锁死 `Do you have…?`。  
 - A2+ 开场仍偏英文短句 + 一问，不强制中文点题段。  
 
-**纠错话术（Prompt 约束，非独立 Agent；适用于练习轮）：**
+**纠错话术（Prompt 约束，非独立 Agent；适用于练习轮；口径见 [2026-09-11-cet-en-primary-scaffold-design.md](superpowers/specs/2026-09-11-cet-en-primary-scaffold-design.md)）：**
 
 - 默认**隐式纠错**：正确英语复述 + 追问，不考试腔、不列分数。  
 - 目标语法反复错或严重影响理解时**显式纠错**：短鼓励 → 1～3 句中文讲解 → 英文关键点/正确句 → 请孩子再说一次。  
-- **中文脚手架**（A0/A1 默认；孩子中文求助；显式纠错）：鼓励/讲解/引导/追问用中文，示范句与关键点用英文；**练习轮** A0/A1 下一问默认中文，A2+ 平常仍以英文为主（**开场**下一问见上，用英文+括号中文）。  
+- **口误/近音纠音（V22）**：孩子文本出现明显口误或近音错（如 ASR `DOI`→`do`、`brain`→`brown`）时，优先 `Say:` 跟读正确词/句，再下一问；不报分数。不依赖发音分回灌（本期仅 Prompt）。  
+- **练习轮默认英文为主**（鼓励 / 隐式纠错 / 下一问）；**整轮最多 1 处** `(中文注释)`（优先只注释下一问）；禁止中文鼓励主句与逐句括号翻译。**中文正文**仅用于显式纠错讲解、或孩子中文求助时的短脚手架。A0/A1 下一问用英文 + 可选那一处括号中文（**开场**仍见上：中文点题 + 英问）。详见 [2026-09-11-cet-en-primary-scaffold-design.md](superpowers/specs/2026-09-11-cet-en-primary-scaffold-design.md)（含 V17 收紧）。  
+- **提问多样化（V18）**：禁止同模板换名词连环（如 Do you like dog→cat→rabbit）；yes/no（含 `Yes, I do` scaffold）可偶发，但**连续两轮不得都是**纯封闭问；颜色/大小等用指认、选择、对比、描述/跟读、个人 WH 轮换。服务端注入 `stageGoal` + `recentAsks`。详见 [2026-09-13-cet-tutor-question-variety-design.md](superpowers/specs/2026-09-13-cet-tutor-question-variety-design.md)。  
+- **骨架反重复 + Look 配额（V22/V23）**：同课内同一问句骨架（如 `Do you have a ___?` / `What color is your ___?`）最多 1 次；warmup/vocab/model 与点名实体的 dialog 轮优先 `Look!` 并**点名至少一个可展示实体词**（禁止裸 `Look! What is this?`）。V31 起这条从「建议」变成「硬要求」：`{{propInstruction}}` 明确告知外教，只有在句子里说出该英文词本身，孩子屏幕上才会出现图片。详见 [2026-09-13-cet-prompt-v22-props-repeat-eval-design.md](superpowers/specs/2026-09-13-cet-prompt-v22-props-repeat-eval-design.md)、[2026-09-13-cet-prop-stage-library-design.md](superpowers/specs/2026-09-13-cet-prop-stage-library-design.md)。  
+- **道具可用性闸门（V30）**：Tutor 每轮只接收已发布且可读取的 `propAssets` lemma；没有可用道具图片时，禁止提出 Look、What is this、指向图片或依赖图片辨认颜色/大小的问题，改用无图口语、跟读、选择或个人 WH 练习。  
 - **气泡**可在英文后保留 `(中文注释)`；**禁止**整段「英文主句 + 逐句括号翻译」堆叠。  
 - **TTS**（`speakableForTts`）：朗读中文正文 + 英文例句，去掉含中文的括号注释。发音评测仍用独立英文 `referenceText`，不把整段中文讲解当跟读稿。
 
