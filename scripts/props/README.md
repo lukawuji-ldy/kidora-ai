@@ -95,5 +95,6 @@ node scripts/props/verify-props.mjs --dsn postgres://kidora:pw@127.0.0.1:5432/ki
 
 - **图片二进制不进 Git**（`cet-tutor-server/data/cet-props/` 已在 `.gitignore`）。进 Git 的是 `manifest.json` + `props.lock.json` + 生成的 seed SQL，所以任何一份检出都能用 `node scripts/props/import-props.mjs` 原样重建素材，并用 `verify-props.mjs` 核对校验和。
 - `cet-tutor-server/data/cet-props` 是本地开发目录，生产环境用 `KIDORA_CET_PROPS_DIR` 指向持久化卷，并把同一批文件同步过去。
+- 默认值 `./data/cet-props` **相对进程工作目录**。`PropFileLocator` 会在工作目录下找不到时再试一次 `cet-tutor-server/data/cet-props`，所以从模块目录或仓库根启动都能命中；命中不了时启动日志会打出最终解析的绝对路径，按它设 `KIDORA_CET_PROPS_DIR` 即可。
 - 迁移只写元数据，不含图片二进制。**只跑迁移不同步文件**会导致运行时 404，`verify-props.mjs` 就是用来提前发现这种情况的。
 - 缺失道具由运行时写入 `cet_prop_asset_generation_task`（`QUEUED`）；本仓不生成图片，生成与审核在 `kidora-ai-manage`。把常用词补进本清单后，该队列应保持为空。

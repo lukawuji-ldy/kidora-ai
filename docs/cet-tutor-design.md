@@ -105,6 +105,7 @@
 - **提问多样化（V18）**：禁止同模板换名词连环（如 Do you like dog→cat→rabbit）；yes/no（含 `Yes, I do` scaffold）可偶发，但**连续两轮不得都是**纯封闭问；颜色/大小等用指认、选择、对比、描述/跟读、个人 WH 轮换。服务端注入 `stageGoal` + `recentAsks`。详见 [2026-09-13-cet-tutor-question-variety-design.md](superpowers/specs/2026-09-13-cet-tutor-question-variety-design.md)。  
 - **骨架反重复 + Look 配额（V22/V23）**：同课内同一问句骨架（如 `Do you have a ___?` / `What color is your ___?`）最多 1 次；warmup/vocab/model 与点名实体的 dialog 轮优先 `Look!` 并**点名至少一个可展示实体词**（禁止裸 `Look! What is this?`）。V31 起这条从「建议」变成「硬要求」：`{{propInstruction}}` 明确告知外教，只有在句子里说出该英文词本身，孩子屏幕上才会出现图片。详见 [2026-09-13-cet-prompt-v22-props-repeat-eval-design.md](superpowers/specs/2026-09-13-cet-prompt-v22-props-repeat-eval-design.md)、[2026-09-13-cet-prop-stage-library-design.md](superpowers/specs/2026-09-13-cet-prop-stage-library-design.md)。  
 - **道具可用性闸门（V30）**：Tutor 每轮只接收已发布且可读取的 `propAssets` lemma；没有可用道具图片时，禁止提出 Look、What is this、指向图片或依赖图片辨认颜色/大小的问题，改用无图口语、跟读、选择或个人 WH 练习。  
+- **道具主图声明**：外教每轮在回复末尾另起一行写 `[[PROP:词]]`（不需要图写 `[[PROP:none]]`），声明本轮孩子屏幕上要显示哪一张图；词必须是本轮问题真正指向的那个，不能用 `pet` 这类泛称。该标记在输出闸门、落库、SSE、TTS 之前被剥离，孩子看不到也听不到；漏写时退回按字幕点名顺序判定。详见 [2026-09-14-cet-prop-declared-lemma-design.md](superpowers/specs/2026-09-14-cet-prop-declared-lemma-design.md)。  
 - **气泡**可在英文后保留 `(中文注释)`；**禁止**整段「英文主句 + 逐句括号翻译」堆叠。  
 - **TTS**（`speakableForTts`）：朗读中文正文 + 英文例句，去掉含中文的括号注释。发音评测仍用独立英文 `referenceText`，不把整段中文讲解当跟读稿。
 

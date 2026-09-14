@@ -40,9 +40,12 @@ public class TutorLoop {
             "(?:Say:\\s*[^?!.\\n]+|[^?!.\\n]+\\?)",
             Pattern.CASE_INSENSITIVE);
 
-    /** 外教声明本轮要展示哪张道具图的结构化标记，展示前必须剥离。 */
+    /**
+     * 外教声明本轮要展示哪张道具图的结构化标记，展示前必须剥离。
+     * 前导空白一并吃掉，避免标记独占一行时在字幕里留下空行。
+     */
     private static final Pattern PROP_DIRECTIVE_PATTERN = Pattern.compile(
-            "\\[\\[\\s*PROP\\s*:\\s*([A-Za-z0-9_-]{0,64})\\s*]]",
+            "\\s*\\[\\[\\s*PROP\\s*:\\s*([A-Za-z0-9_-]{0,64})\\s*]]",
             Pattern.CASE_INSENSITIVE);
 
     /** 标记里表示「本轮不展示图片」的值。 */
@@ -206,9 +209,7 @@ public class TutorLoop {
                 lemma = candidate.toLowerCase(Locale.ROOT);
             }
         }
-        String text = m.replaceAll("")
-                .replaceAll("[ \\t]*\\n[ \\t]*\\n[ \\t]*(\\n[ \\t]*)+", "\n\n")
-                .trim();
+        String text = m.replaceAll("").trim();
         if (PROP_DIRECTIVE_NONE.equals(lemma)) {
             lemma = null;
         }

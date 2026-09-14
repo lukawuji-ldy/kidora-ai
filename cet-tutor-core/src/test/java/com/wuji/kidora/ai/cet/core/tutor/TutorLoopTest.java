@@ -213,6 +213,14 @@ class TutorLoopTest {
     }
 
     @Test
+    void parseReply_ownLineDirectiveLeavesNoBlankLine() {
+        TutorLoop.TutorReply reply = TutorLoop.parseReply(
+                "Look at the dog!\n[[PROP:dog]]\nIs it big?");
+
+        assertEquals("Look at the dog!\nIs it big?", reply.text());
+    }
+
+    @Test
     void parseReply_missingDirectiveLeavesTextUntouched() {
         TutorLoop.TutorReply reply = TutorLoop.parseReply("Nice job! Say it again.");
 
