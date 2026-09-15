@@ -145,7 +145,7 @@ kidora-mcp-server/
     KidoraMcpServerApplication.java
     auth/          # Bearer / X-API-Key（KIDORA_MCP_API_KEY）
     config/        # MethodToolCallbackProvider + SpeechConfiguration
-    speech/        # SpeechProvider：StubSpeechProvider | AzureSpeechProvider（REST）
+    speech/        # SpeechProvider：Stub | Azure（REST）| iFlytek | Tencent + Mp3AudioTail（末帧修补）
     tools/         # ConnectivityTools + SpeechTools（委托 Provider）
 
 cet-tutor-server/…/mcp/
@@ -167,6 +167,8 @@ cet-tutor-server/…/mcp/
 | `dictionary_lookup` | `word`, `phonetic`, `definitions[]`, `examples[]`, `provider` |
 
 CET 调用 TTS 时：`voice` 来自 `cet_persona_voice`（`persona_id` + `speech_route.primary_vendor` 的 ACTIVE 行；seed：腾讯 × 6 + 讯飞 × 6）；无映射则省略 `voice`，腾讯默认 `101001`、讯飞默认 `x4_xiaoyan`。协议字段不变；cet-* 不直连云厂商。详见 [cet-persona-design.md](cet-persona-design.md) §5.1 / §5.2。
+
+MP3 音频（腾讯 / 讯飞）返回前一律过 `speech/Mp3AudioTail`：厂商末帧常缺几字节，Chrome 解封装会抛 `PIPELINE_ERROR_DECODE`、不再触发 `ended`，听感是外教尾句没读完就停；该工具截掉结尾不完整的一帧后再出 `audioBase64`。Azure 走 WAV，不受影响。
 
 错误：`{"error":{"code":"...","message":"..."},"provider":"stub|azure|iflytek|tencent|http"}`。
 

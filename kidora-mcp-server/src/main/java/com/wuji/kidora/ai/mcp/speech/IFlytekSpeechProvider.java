@@ -149,6 +149,8 @@ public class IFlytekSpeechProvider implements SpeechProvider {
             if (audio == null || audio.length == 0) {
                 return SpeechOutcome.error("VENDOR_API_FAILED", "Empty TTS body", PROVIDER_ID);
             }
+            // 流式 lame 拼帧后末帧可能不完整，浏览器会 PIPELINE_ERROR_DECODE 掐掉尾句
+            audio = Mp3AudioTail.trimIncompleteTrailingFrame(audio);
             String loc = defaultLocale(locale);
             return SpeechOutcome.ok("{\"audioBase64\":\"" + Base64.getEncoder().encodeToString(audio)
                     + "\",\"mimeType\":\"audio/mpeg\",\"voice\":\"" + escape(vcn)

@@ -1,5 +1,17 @@
 # 进度日志
 
+## 会话：2026-09-14 外教尾句被掐排查
+
+### 根因：厂商 MP3 末帧不完整 → Chrome 解码错、`ended` 不触发
+- **状态：** complete
+- 执行的操作：
+  - 逐层排查确认文本、`max_tokens`、SSE 传输、厂商音频内容均无缺失（详见 [findings.md](findings.md)）
+  - 新增 `kidora-mcp-server` `speech/Mp3AudioTail`：截掉结尾不完整的 Layer III 帧；接入 `TencentSpeechProvider.mapTts` 与 `IFlytekSpeechProvider.synthesize`
+  - `kidora-web` `tutorVoice.ts`：已起播后的 `error` 视同播完，走补齐静默路径，不立即抢麦
+  - docs：mcp-design §10 / ui-design §5 / findings 同步
+- 验收：`kidora-mcp-server` 全量 52 测试通过（含新增 `Mp3AudioTailTest` 7 例）；`kidora-web` `npm run test:unit` 23 pass；Java 修补结果与 Chrome headless 实测可正常 `ended` 的文件逐字节一致
+- **下一步：** 重启 `kidora-mcp-server` 后跑一节真实课时复听尾句
+
 ## 会话：2026-09-13 Checkpoint 存储与后台跟踪
 
 ### 方案 1（ReactAgent + PostgresSaver + 管理台回放）

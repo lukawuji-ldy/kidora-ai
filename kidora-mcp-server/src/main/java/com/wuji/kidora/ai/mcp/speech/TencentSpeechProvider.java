@@ -235,6 +235,8 @@ public class TencentSpeechProvider implements SpeechProvider {
         if (!StringUtils.hasText(audio)) {
             audio = root.path("audio").asText("");
         }
+        // TextToVoice 的 mp3 末帧常缺几字节，浏览器会 PIPELINE_ERROR_DECODE 掐掉尾句
+        audio = Mp3AudioTail.trimIncompleteTrailingFrame(audio);
         String loc = defaultLocale(locale);
         return SpeechOutcome.ok("{\"audioBase64\":\"" + audio + "\",\"mimeType\":\"audio/mpeg\",\"voice\":\""
                 + escape(voice) + "\",\"locale\":\"" + escape(loc) + "\",\"provider\":\"" + PROVIDER_ID + "\"}");

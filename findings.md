@@ -140,5 +140,17 @@
 - **冒烟结果：** 路由已命中 `llm_chat_primary` / `deepseek-flash`；真实调用曾 **HTTP 404**。库中 `base_url=https://api.deepseek.com/v1` 易与 Spring AI 默认 `/v1/chat/completions` 叠成双 `/v1`；且官网模型 id 需确认 `deepseek-flash` 是否有效（常见为 `deepseek-chat`）。请在管理台改 base 为 `https://api.deepseek.com`、核对 model 后重启再测。
 - 详见 [gate-analysis](docs/superpowers/specs/2026-09-11-cet-turn-latency-gate-analysis.md)、[o1-safety](docs/superpowers/specs/2026-09-11-cet-turn-latency-o1-safety-design.md)。
 
+## 外教尾句被掐：厂商 MP3 末帧不完整（2026-09-14）
+
+现象：外教「结尾一句没发完就停」，各轮都可能出现。定位链路（实测，非推测）：
+
+1. 文本侧无缺失：`cet_tutor_turn.tutor_text` 均为完整句；`max_tokens=1024` 未截断。
+2. 厂商音频**内容完整**：`speech_route.primary=tencent`；用真实 `tutor_text` 直调 `TextToVoice`，得 19.62s / 78478B mp3，`silencedetect` 显示尾句独立成段（15.17s→19.62s）。
+3. 但**末帧不完整**：mp3 CBR 32kbps / 16kHz / MPEG2 Layer III，每帧 144B；最后一帧只回了 142B（另一样本缺 34B）。
+4. Chrome 因此报 `PIPELINE_ERROR_DECODE: mpa: invalid packet length`，**`ended` 永不触发**，播放停在 19.308s；`tutorVoice.ts` 的 `error` 分支又立刻 revoke blob 并按「立即结束」通知业务层，于是尾音被掐 + 200ms 后就抢麦。
+5. 截掉这半帧后同一文件在 Chrome 播到 19.584s 并正常 `ended`（headless CDP 实测对照）。
+
+处置：`kidora-mcp-server` 的 `speech/Mp3AudioTail` 在返回前截掉结尾不完整帧（腾讯 + 讯飞）；前端对「已起播后的 `error`」按播完处理（走文案估算补齐，不立即开麦）。Azure 走 WAV，无此问题。
+
 ---
 *权威决策以 [agents.md](agents.md) 与 [task_plan.md](task_plan.md) 为准；本文件为调研沉淀。*

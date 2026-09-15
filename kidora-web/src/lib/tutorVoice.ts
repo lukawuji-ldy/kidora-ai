@@ -191,8 +191,13 @@ export function playTutorVoice(opts: TutorPlayOpts) {
     audio.addEventListener("error", () => {
       if (!playGen.isLive(token)) return;
       if (sharedAudio === audio) sharedAudio = null;
+      if (started) {
+        // 厂商 mp3 末帧不完整时 Chrome 只抛 decode 错、不发 ended：按播完处理并补齐静默，别立刻抢麦
+        finishIfLive(false);
+        return;
+      }
       revokeObjectUrl();
-      if (!started) opts.onBlocked?.();
+      opts.onBlocked?.();
       finishIfLive(true);
     });
     void audio.play().then(markStart).catch(() => {
