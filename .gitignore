@@ -43,3 +43,7 @@ build/
 
 # CET 教具本地文件目录（元数据在 DB；大图不进 Git）
 cet-tutor-server/data/cet-props/
+/.superpowers/
+/.superpowers/
+/.superpowers/
+/.superpowers/*/
