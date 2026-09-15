@@ -1,7 +1,7 @@
 # Kidora AI
 
 儿童健康与成长方向的 **Agent 平台运行时**仓库。首期产品：**Child English Tutor（CET）** — 儿童英语口语陪练。
-
+![img.png](assets/img.png)
 ## 仓库边界
 
 | 仓库 | 职责 |
